@@ -125,37 +125,6 @@ class NODE:
 		return "\t".join([self.id,self.dep_parent,self.dep_rel,self.text])
 
 
-def exec_via_temp(input_text, command_params, workdir="", cat_out=False):
-	temp = tempfile.NamedTemporaryFile(delete=False)
-	exec_out = ""
-	try:
-		temp.write(input_text)
-		temp.close()
-
-		command_params = [x if x != 'tempfilename' else temp.name for x in command_params]
-		if workdir == "":
-			proc = subprocess.Popen(command_params, stdout=subprocess.PIPE,stdin=subprocess.PIPE,stderr=subprocess.PIPE)
-			if cat_out:
-				proc.communicate()
-				stdout = ""
-			else:
-				(stdout, stderr) = proc.communicate()
-		else:
-			proc = subprocess.Popen(command_params, stdout=subprocess.PIPE, stdin=subprocess.PIPE,stderr=subprocess.PIPE, cwd=workdir)
-			if cat_out:
-				proc.communicate()
-				stdout = ""
-			else:
-				(stdout, stderr) = proc.communicate()
-
-		exec_out = stdout
-	except Exception as e:
-		print e
-	finally:
-		os.remove(temp.name)
-		return exec_out
-
-
 def get_left_right(node_id, nodes, min_left, max_right, rel_hash):
 	"""
 	Calculate leftmost and rightmost EDU covered by a NODE object. For EDUs this is the number of the EDU
