@@ -1,0 +1,15 @@
+rst2dep.py
+
+Script to convert Rhetorical Structure Theory trees from .rs3 format to a
+dependency representation. Example usage: python rst2dep.py <INFILES>
+
+usage: rst2dep.py [-h] [-r ROOT] infiles
+
+positional arguments:
+  infiles               file name or glob pattern, e.g. *.rs3
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -r ROOT, --root ROOT  optional: path to corpus root folder containing a
+                        directory dep/ and a directory xml/ containing
+                        additional corpus formats
