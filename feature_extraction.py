@@ -42,6 +42,8 @@ def get_tok_info(docname,corpus_root):
 	for line in lines:
 		if "\t" in line:
 			cols = line.split("\t")
+			if "-" in cols[0] or "." in cols[0]:
+				continue
 			tokens.append(ParsedToken(cols[0],cols[1],cols[2],cols[3],cols[5],cols[6],cols[7]))
 
 	counter = 0
