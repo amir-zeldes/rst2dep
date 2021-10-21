@@ -1,6 +1,6 @@
 """
 Script to extract depdendency and XML markup information from data
-in the conll10 and CWB XML formats.
+in the conll10/conllu and CWB XML formats.
 
 """
 import os, re
@@ -35,7 +35,11 @@ def get_tok_info(docname,corpus_root):
 	conll_file = corpus_root + "dep" + os.sep + docname + ".conll10"
 	tokens = []
 
-	for line in open(conll_file).read().replace("\r","").split("\n"):
+	try:
+		lines = open(conll_file).read().replace("\r","").split("\n")
+	except:
+		lines = open(conll_file.replace(".conll10",".conllu")).read().replace("\r","").split("\n")
+	for line in lines:
 		if "\t" in line:
 			cols = line.split("\t")
 			tokens.append(ParsedToken(cols[0],cols[1],cols[2],cols[3],cols[5],cols[6],cols[7]))
