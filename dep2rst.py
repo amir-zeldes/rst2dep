@@ -256,8 +256,10 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
 
 
 if __name__ == "__main__":
-    p = ArgumentParser()
-    p.add_argument("file")
+    desc = "Script to convert discourse dependencies to Rhetorical Structure Theory trees \n in the .rs3 format.\nExample usage:\n\n" + \
+            "python dep2rst.py INFILE"
+    p = ArgumentParser(description=desc)
+    p.add_argument("file", help="discourse dependency file in .rsd or .conllu format")
     p.add_argument("-f","--format",choices=["rsd","conllu"],default="rsd",help="input format")
     p.add_argument("-d","--depth",choices=["ltr","rtl","dist"],default="dist",help="how to order depth")
     p.add_argument("-r","--rels",action="store_true",help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
