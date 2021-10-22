@@ -89,6 +89,10 @@ def conllu2rsd(conllu):
     return "\n".join(edus) + "\n"
 
 
+def xml_escape(edu_contents):
+    return edu_contents.replace("&","&amp;").replace(">","&gt;").replace("<","&lt;")
+
+
 def determinstic_groups(nodes):
     """
     Create an ID map with a deterministic ordering of group IDs based on a depth first climb of the ordered EDUs
@@ -239,7 +243,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
         if edu.parent == 0:
             seg = '\t\t<segment id="' + str(edu.id) + '"/>'
         else:
-            seg = '\t\t<segment id="'+str(edu.id)+'" parent="'+str(id_map[edu.parent])+'" relname="'+edu.relname+'">'+edu.text+'</segment>'
+            seg = '\t\t<segment id="'+str(edu.id)+'" parent="'+str(id_map[edu.parent])+'" relname="'+edu.relname+'">'+xml_escape(edu.text)+'</segment>'
         edus_out.append(seg)
 
     groups_out = []
