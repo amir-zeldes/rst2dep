@@ -7,9 +7,8 @@ to a CoNLL-style dependency representation.
 """
 
 
-import re, io, ntpath
+import re, io, ntpath, collections
 from xml.dom import minidom
-from collections import defaultdict
 from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
 try:
@@ -268,6 +267,22 @@ def read_rst(data, rel_hash, as_text=False):
     for element in node_elements:
         element_types[element.attributes["id"].value] = element.attributes["type"].value
 
+
+    # Collect all children of multinuc parents to prioritize which potentially multinuc relation they have
+    item_list = xmldoc.getElementsByTagName("segment") + xmldoc.getElementsByTagName("group")
+    multinuc_children = collections.defaultdict(lambda : collections.defaultdict(int))
+    for elem in item_list:
+        if elem.attributes.length >= 3:
+            parent = elem.attributes["parent"].value
+            relname = elem.attributes["relname"].value
+            # Tolerate schemas by treating as spans
+            if relname in schemas:
+                relname = "span"
+            relname = re.sub(r"[:;,]", "", relname)  # Remove characters used for undo logging, not allowed in rel names
+            if parent in element_types:
+                if element_types[parent] == "multinuc" and relname+"_m" in rel_hash:
+                    multinuc_children[parent][relname] += 1
+
     id_counter = 0
     item_list = xmldoc.getElementsByTagName("segment")
     for segment in item_list:
@@ -284,11 +299,19 @@ def read_rst(data, rel_hash, as_text=False):
         # Tolerate schemas, but no real support yet:
         if relname in schemas:
             relname = "span"
-
             relname = re.sub(r"[:;,]", "", relname)  # remove characters used for undo logging, not allowed in rel names
+
         # Note that in RSTTool, a multinuc child with a multinuc compatible relation is always interpreted as multinuc
+        if parent in multinuc_children:
+            if len(multinuc_children[parent]) > 0:
+                key_list = list(multinuc_children[parent])[:]
+                for key in key_list:
+                    if multinuc_children[parent][key] < 2:
+                        del multinuc_children[parent][key]
+
         if parent in element_types:
-            if element_types[parent] == "multinuc" and relname + "_m" in rel_hash:
+            if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (
+                    relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
                 relname = relname + "_m"
             elif relname != "span":
                 relname = relname + "_r"
@@ -314,8 +337,16 @@ def read_rst(data, rel_hash, as_text=False):
 
             relname = re.sub(r"[:;,]", "", relname)  # remove characters used for undo logging, not allowed in rel names
             # Note that in RSTTool, a multinuc child with a multinuc compatible relation is always interpreted as multinuc
+
+            if parent in multinuc_children:
+                if len(multinuc_children[parent])>0:
+                    key_list = list(multinuc_children[parent])[:]
+                    for key in key_list:
+                        if multinuc_children[parent][key] < 2:
+                            del multinuc_children[parent][key]
+
             if parent in element_types:
-                if element_types[parent] == "multinuc" and relname + "_m" in rel_hash:
+                if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
                     relname = relname + "_m"
                 elif relname != "span":
                     relname = relname + "_r"
@@ -545,8 +576,6 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     for nid in nodes:
         node = nodes[nid]
-        if nid == "9":
-            pass
         if node.kind == "edu":
             dep_parent = find_dep_head(nodes,nid,nid,[])
             if dep_parent is None:
@@ -560,7 +589,6 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
     # Get height distance from dependency parent to child's attachment point in the phrase structure (number of spans)
     for nid in nodes:
         node = nodes[nid]
-        node.domain = 0
         if node.dep_rel == "ROOT":
             node.dist = "0"
             continue
