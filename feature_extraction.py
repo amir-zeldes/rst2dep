@@ -39,12 +39,28 @@ def get_tok_info(docname,corpus_root):
 		lines = open(conll_file).read().replace("\r","").split("\n")
 	except:
 		lines = open(conll_file.replace(".conll10",".conllu")).read().replace("\r","").split("\n")
+	offset = sent_toks = 0
+	toks_by_abs_id = {}
 	for line in lines:
 		if "\t" in line:
 			cols = line.split("\t")
 			if "-" in cols[0] or "." in cols[0]:
 				continue
-			tokens.append(ParsedToken(cols[0],cols[1],cols[2],cols[3],cols[5],cols[6],cols[7]))
+			tok = ParsedToken(cols[0],cols[1],cols[2],cols[3],cols[5],cols[6],cols[7])
+			tok.abs_id = int(cols[0]) + offset
+			tok.abs_head = int(cols[6]) + offset if cols[6] != "0" else 0
+			toks_by_abs_id[tok.abs_id] = tok
+			tokens.append(tok)
+			sent_toks += 1
+		elif len(line.strip())==0:
+			offset += sent_toks
+			sent_toks = 0
+
+	for tok in tokens:
+		if tok.head != "0":
+			tok.parent = toks_by_abs_id[tok.abs_head]
+		else:
+			tok.parent = None
 
 	counter = 0
 	heading = "_"
