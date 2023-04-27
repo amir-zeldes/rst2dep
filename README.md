@@ -22,6 +22,7 @@ optional arguments:
   -r ROOT, --root ROOT  optional: path to corpus root folder containing a
                         directory dep/ and a directory xml/ containing
                         additional corpus formats
+  -p, --print           print output instead of serializing to a file
 ```
 
 ## dep2rst

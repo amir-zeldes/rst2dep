@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-Script to convert Rhetorical Structure Theory trees from .rs3 format
-to a CoNLL-style dependency representation.
+Script to convert Rhetorical Structure Theory trees from .rs3 or .rs4 format
+to a CoNLL-style dependency representation, a.k.a. .rsd.
 """
 
 
-import re, io, ntpath, collections
+import re, io, ntpath, collections, sys
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
@@ -32,8 +32,19 @@ class SIGNAL:
         return self.type + "/" + self.subtype + " (" + self.tokens + ")"
 
     def __str__(self):
-        return "|".join([self.type,self.subtype,self.tokens])
+        return "-".join([self.type,self.subtype,self.tokens])
 
+
+class SECEDGE:
+    def __init__(self, source, target, relname, signals=None):
+        """Class to hold secondary edges"""
+        if signals is None:
+            signals = []
+        self.id = source + "-" + target
+        self.source = source
+        self.target = target
+        self.relname = relname
+        self.signals = signals
 
 class NODE:
     def __init__(self, id, left, right, parent, depth, kind, text, relname, relkind, signals=None):
@@ -82,11 +93,13 @@ class NODE:
 
         if feats:
             first_pos = "pos1=" + self.tokens[0].pos
+            sent_id = "sid=" + str(self.tokens[0].sent_id)
             for tok in self.tokens:
                 if tok.head == "0" and not tok.func == "punct":
                     head_word = "head_tok="+tok.lemma.replace("=","&eq;")
                     head_func = "head_func="+tok.func
                     head_pos = "head_pos="+tok.pos
+                    head_id = "head_id="+str(tok.abs_id)
                     head_parent_pos = "parent_pos" + tok.parent.pos if tok.parent is not None else "parent_pos=_"
                 if tok.pos in ["PRP", "PP"]:
                     pro = "pro"
@@ -113,7 +126,7 @@ class NODE:
                 self.heading = "date=date"
             if self.subord in ["LEFT","RIGHT"]:
                 self.subord = "subord=" + self.subord
-            feats = "|".join(feat for feat in [first_pos, head_word, head_pos, head_parent_pos, "stype="+self.s_type, "len="+str(len(self.tokens)), head_func, self.subord, self.heading, self.caption, self.para, self.item, self.date] if feat != "_")
+            feats = "|".join(feat for feat in [first_pos, head_word, head_pos, head_id, head_parent_pos, sent_id, "stype="+self.s_type, "len="+str(len(self.tokens)), head_func, self.subord, self.heading, self.caption, self.para, self.item, self.date] if feat != "_")
             if len(feats)==0:
                 feats = "_"
         else:
@@ -395,12 +408,33 @@ def read_rst(data, rel_hash, as_text=False):
                         leftmost = child_id
             node.leftmost_child = leftmost
 
+    secedge_list = xmldoc.getElementsByTagName("secedge")
+    secedges = {}
+    # Handle secedges, which look like this:
+    # <secedge id="127-28" source="127" target="28" relname="causal-cause"/>
+    for sec in secedge_list:
+        source = str(sec.attributes["source"].value)
+        target = str(sec.attributes["target"].value)
+        relname = sec.attributes["relname"].value
+        secedges[source + "-" + target] = SECEDGE(source,target,relname)
+
     signal_list = xmldoc.getElementsByTagName("signal")
     for sig in signal_list:
         nid = str(sig.attributes["source"].value)
         if nid not in elements:
-            raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
+            if "-" in nid:
+                if nid not in secedges:
+                    raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
+                else:
+                    secedges[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+                    continue
+            else:
+                raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
         elements[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+
+    for secedge in secedges:
+        elements[secedge] = secedges[secedge]
+        elements[secedge].kind = "secedge"
 
     return elements
 
@@ -501,6 +535,15 @@ def get_nonspan_rel(nodes,node):
 
 def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"):
     nodes = read_rst(rstfile,{},as_text=as_text)
+
+    # Store any secedge info and remove from nodes
+    secedges = []
+    keys = [nid for nid in nodes]
+    for nid in keys:
+        if "-" in nid:
+            secedges.append(nodes[nid])
+            del nodes[nid]
+
     out_graph = []
     if rstfile.endswith("rs3"):
         out_file = rstfile.replace(".rs3",".rsd")
@@ -579,15 +622,36 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     for nid in nodes:
         node = nodes[nid]
+        dep_parent = find_dep_head(nodes, nid, nid, [])
+        if dep_parent is None:
+            # This is the root
+            dep_parent = "0"
         if node.kind == "edu":
-            dep_parent = find_dep_head(nodes,nid,nid,[])
-            if dep_parent is None:
-                #This is the root
-                node.dep_parent = "0"
+            if dep_parent == "0":
                 node.dep_rel = "ROOT"
-            else:
-                node.dep_parent = dep_parent
+            node.dep_parent = dep_parent
             out_graph.append(node)
+
+    # Get head EDU and height per node
+    node2head_edu = {}
+    node2height = {}
+    for edu in edus:
+        edu.height = 0
+        node = edu
+        edu_id = edu.id
+        node2head_edu[node.id] = edu_id
+        while node.parent != "0":
+            this_height = node.height + 1
+            node = nodes[node.parent]
+            if node.kind == "edu":
+                edu_id = node.id
+            if node.id not in node2head_edu:
+                node2head_edu[node.id] = edu_id
+                node.height = this_height
+            else:
+                if int(edu_id) < int(node2head_edu[node.id]):  # Prefer left most child as head
+                    node2head_edu[node.id] = edu_id
+                    node.height = this_height
 
     # Get height distance from dependency parent to child's attachment point in the phrase structure (number of spans)
     for nid in nodes:
@@ -609,7 +673,31 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
         else:
             output.append(node.out_malt())
 
-    return "\n".join(output) + "\n"
+    # Insert secedges if any
+    src2secedges = collections.defaultdict(set)
+    for secedge in secedges:
+        dep_src = node2head_edu[nodes[secedge.source].id]
+        dep_trg = node2head_edu[nodes[secedge.target].id]
+        src_dist = str(nodes[secedge.source].height)
+        trg_dist = str(nodes[secedge.target].height)
+        signals = []
+        for sig in secedge.signals:
+            signals.append("-".join([sig.type,sig.subtype,sig.tokens]))
+        signals = ";".join(sorted(signals)) if len(signals)>0 else "_"
+        src2secedges[dep_src].add(":".join([dep_trg,secedge.relname,src_dist,trg_dist,signals]))
+
+    temp = []
+    for i, line in enumerate(output):
+        if str(i+1) in src2secedges:
+            fields = line.split("\t")
+            secstr = "|".join(src2secedges[str(i+1)])
+            fields[8] = secstr
+            line = "\t".join(fields)
+        temp.append(line)
+
+    output = "\n".join(temp) + "\n"
+
+    return output
 
 
 if __name__ == "__main__":
@@ -619,6 +707,7 @@ if __name__ == "__main__":
     parser.add_argument("infiles",action="store",help="file name or glob pattern, e.g. *.rs3")
     parser.add_argument("-r","--root",action="store",dest="root",default="",help="optional: path to corpus root folder containing a directory dep/ and \n"+
                                                            "a directory xml/ containing additional corpus formats")
+    parser.add_argument("-p","--print",action="store_true",help="print output instead of serializing to a file")
 
     options = parser.parse_args()
 
@@ -632,6 +721,12 @@ if __name__ == "__main__":
 
     for rstfile in files:
         output = make_rsd(rstfile,options.root)
-        with io.open(rstfile.replace("rs3","rsd"),'w',encoding="utf8",newline="\n") as f:
-            f.write(output)
+        if options.print:
+            print(output)
+        else:
+            newname = rstfile.replace("rs3","rsd").replace("rs4","rsd")
+            if newname == rstfile:
+                newname = rstfile + ".rsd"
+            with io.open(newname,'w',encoding="utf8",newline="\n") as f:
+                f.write(output)
 
