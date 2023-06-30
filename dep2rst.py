@@ -42,15 +42,24 @@ Input format - .conllu:
 
 """
 
-import io, sys
+import io, sys, os
 from argparse import ArgumentParser
 from rst2dep import NODE
 from collections import defaultdict
 
 # Default relations to include in generated .rs3 header
 DEFAULT_RELATIONS = \
-    {"rst":{"antithesis","attribution","background","cause","circumstance","concession","condition","elaboration","evaluation","evidence","justify","manner","means","motivation","preparation","purpose","question","restatement","result","solutionhood"},
-     "multinuc":{"joint","contrast","restatement","same-unit","sequence","disjunction"}}
+    {"rst":{"adversative-antithesis","attribution-positive","attribution-negative","context-background","causal-cause","context-circumstance",
+            "adversative-concession","contingency-condition","elaboration-additional","elaboration-attribute","evaluation-comment",
+            "explanation-evidence","explanation-justify","mode-manner","mode-means","explanation-motivation",
+            "organization-phatic","organization-preparation","organization-heading","purpose-goal","purpose-attribute","topic-question",
+            "restatement-partial","causal-result","topic-solutionhood"},
+     "multinuc":{"joint-other","adversative-contrast","same-unit","joint-sequence","joint-disjunction","restatement-repetition","joint-list"}}
+
+
+def clean_xml(xml):
+    xml = xml.replace(" />", "/>").replace("    ", "\t").replace("<?xml version='1.0' encoding='utf8'?>\n", "")
+    return xml
 
 
 def conllu2rsd(conllu):
@@ -165,8 +174,13 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
         p = nodes[nid].parent
         path_length = 0
         while p != 0:
-            p = nodes[p].parent
+            try:
+                p = nodes[p].parent
+            except:
+                raise IOError("! invalid rsd, parent of " + str(p) + " does not exist. rsd:\n" +rsd)
             path_length += 1
+            if path_length > 1000:
+                raise IOError("! path_length exceeds 1000 in graph (cyclical dependency for unit "+str(p)+"?)\n" + rsd)
         nodes[nid].depth = path_length
 
     # Add deterministic ordering prioritizing right or left children, if desired
@@ -300,11 +314,12 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
             xml = f'\t\t\t<signal source="{id_map[n.id]}" type="{stype}" subtype="{subtype}" tokens="{toks}"/>'
             signals_out.append(xml)
     if len(signals_out) > 0:
-        signals_out = "\t\t<signals>\n" + "\n".join(signals_out) + "\n\t\t</signals>\n"
+        signals_out = "\n\t\t<signals>\n" + "\n".join(signals_out) + "\n\t\t</signals>\n"
     else:
         signals_out = ""
 
-    output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + "\n" + signals_out + "\n\t</body>\n</rst>\n"
+    output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + signals_out + "\n\t</body>\n</rst>\n"
+    output = clean_xml(output)
 
     return output
 
@@ -319,11 +334,24 @@ if __name__ == "__main__":
     p.add_argument("-r","--rels",action="store_true",help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
 
     opts = p.parse_args()
-    data = io.open(opts.file,encoding="utf8").read()
 
-    if opts.format == "conllu":
-        data = conllu2rsd(data)
+    if "*" in opts.file:
+        from glob import glob
+        files = glob(opts.file)
+    else:
+        files = [opts.file]
 
-    output = rsd2rs3(data, ordering=opts.depth)
+    for file_ in files:
+        data = io.open(file_,encoding="utf8").read()
 
-    print(output)
+        if opts.format == "conllu":
+            data = conllu2rsd(data)
+
+        output = rsd2rs3(data, ordering=opts.depth)
+
+        if len(files) == 1:
+            print(output)
+        else:
+            print("Processing " + file_)
+            with open("output" + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
+                f.write(output)
