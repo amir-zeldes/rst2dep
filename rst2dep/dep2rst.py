@@ -84,7 +84,7 @@ def conllu2rsd(conllu):
                     dist = parts[2]
                 else:
                     dist = "0"
-                if not relname.endswith("_m"):
+                if not relname.endswith("_m") and not relname == "ROOT":
                     relname += "_r"
                 if "->" in edge:
                     edu_id, parent = edge.split("->")
@@ -311,7 +311,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
                     subtype = "_".join(words) if len(words) > 0 else "DM"
 
             stype = sig["type"]
-            xml = f'\t\t\t<signal source="{id_map[n.id]}" type="{stype}" subtype="{subtype}" tokens="{toks}"/>'
+            xml = '\t\t\t<signal source="'+id_map[n.id]+'" type="'+stype+'" subtype="'+subtype+'" tokens="'+toks+'"/>'
             signals_out.append(xml)
     if len(signals_out) > 0:
         signals_out = "\n\t\t<signals>\n" + "\n".join(signals_out) + "\n\t\t</signals>\n"
@@ -328,18 +328,19 @@ if __name__ == "__main__":
     desc = "Script to convert discourse dependencies to Rhetorical Structure Theory trees \n in the .rs3 format.\nExample usage:\n\n" + \
             "python dep2rst.py INFILE"
     p = ArgumentParser(description=desc)
-    p.add_argument("file", help="discourse dependency file in .rsd or .conllu format")
+    p.add_argument("infiles", help="discourse dependency file in .rsd or .conllu format")
     p.add_argument("-f","--format",choices=["rsd","conllu"],default="rsd",help="input format")
     p.add_argument("-d","--depth",choices=["ltr","rtl","dist"],default="dist",help="how to order depth")
     p.add_argument("-r","--rels",action="store_true",help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
+    p.add_argument("-p", "--print", dest="prnt", action="store_true", help="print output instead of serializing to a file")
 
     opts = p.parse_args()
 
     if "*" in opts.file:
         from glob import glob
-        files = glob(opts.file)
+        files = glob(opts.infiles)
     else:
-        files = [opts.file]
+        files = [opts.infiles]
 
     for file_ in files:
         data = io.open(file_,encoding="utf8").read()
@@ -349,9 +350,9 @@ if __name__ == "__main__":
 
         output = rsd2rs3(data, ordering=opts.depth)
 
-        if len(files) == 1:
+        if opts.prnt:
             print(output)
         else:
             print("Processing " + file_)
-            with open("output" + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
+            with io.open("output" + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
                 f.write(output)

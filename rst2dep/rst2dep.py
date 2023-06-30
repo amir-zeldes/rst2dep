@@ -13,7 +13,7 @@ from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
 try:
     from .feature_extraction import ParsedToken, get_tense
-except ImportError:
+except:
     from feature_extraction import ParsedToken, get_tense
 
 # Add hardwired genre identifiers which appear as substring in filenames here
@@ -708,9 +708,9 @@ if __name__ == "__main__":
             "python rst2dep.py <INFILES>"
     parser = ArgumentParser(description=desc)
     parser.add_argument("infiles",action="store",help="file name or glob pattern, e.g. *.rs3")
-    parser.add_argument("-r","--root",action="store",dest="root",default="",help="optional: path to corpus root folder containing a directory dep/ and \n"+
+    parser.add_argument("-c","--corpus_root",action="store",dest="root",default="",help="optional: path to corpus root folder containing a directory dep/ and \n"+
                                                            "a directory xml/ containing additional corpus formats")
-    parser.add_argument("-p","--print",action="store_true",help="print output instead of serializing to a file")
+    parser.add_argument("-p","--print",dest="prnt",action="store_true",help="print output instead of serializing to a file")
 
     options = parser.parse_args()
 
@@ -722,14 +722,13 @@ if __name__ == "__main__":
     else:
         files = [inpath]
 
-    for rstfile in files:
-        output = make_rsd(rstfile,options.root)
-        if options.print:
+    for file_ in files:
+        output = make_rsd(file_, options.root)
+        if options.prnt:
             print(output)
         else:
-            newname = rstfile.replace("rs3","rsd").replace("rs4","rsd")
-            if newname == rstfile:
-                newname = rstfile + ".rsd"
-            with io.open(newname,'w',encoding="utf8",newline="\n") as f:
+            newname = file_.replace("rs3", "rsd").replace("rs4", "rsd")
+            if newname == file_:
+                newname = file_ + ".rsd"
+            with io.open(newname, 'w', encoding="utf8", newline="\n") as f:
                 f.write(output)
-

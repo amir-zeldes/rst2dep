@@ -46,6 +46,7 @@ optional arguments:
                         how to order depth
   -r, --rels            use DEFAULT_RELATIONS for the .rs3 header instead of
                         rels in input data
+  -p, --print           print output instead of serializing to a file
 ```
 
 Supported input formats include .rsd and .conllu:
