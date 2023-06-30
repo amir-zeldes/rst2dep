@@ -5,27 +5,10 @@ in the conll10/conllu and CWB XML formats.
 """
 import os, re, io
 import ntpath
-
-class ParsedToken:
-    def __init__(self, tok_id, text, lemma, pos, morph, head, func):
-        self.id = tok_id
-        self.text = text.strip()
-        self.text_lower = text.lower()
-        self.pos = pos
-        self.lemma = lemma if lemma != "_" else text
-        self.morph = morph
-        self.head = head
-        self.func = func
-        self.heading = "_"
-        self.caption = "_"
-        self.list = "_"
-        self.date = "_"
-        self.s_type = "_"
-        self.children = []
-
-    def __repr__(self):
-        return str(self.text) + " (" + str(self.pos) + "/" + str(self.lemma) + ") " + "<-" + str(self.func) + "- " + str(self.head_text)
-
+try:
+    from .classes import ParsedToken
+except:
+    from classes import ParsedToken
 
 def get_tok_info(docname,corpus_root):
 

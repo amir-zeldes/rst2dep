@@ -4,8 +4,7 @@ from argparse import ArgumentParser
 import sys, os
 
 def run_conversion():
-    parser = ArgumentParser()
-    parser.add_argument()
+    parser = ArgumentParser(usage="python -m rst2dep [-h] [-c ROOT] [-p] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles")
     parser.add_argument("infiles", action="store", help="file name or glob pattern, e.g. *.rs3")
     parser.add_argument("-c", "--corpus_root", action="store", dest="root", default="",
                         help="optional: path to corpus root folder containing a directory dep/ and \n" +
@@ -57,3 +56,6 @@ def run_conversion():
             else:
                 with open("output" + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
                     f.write(output)
+
+if __name__ == "__main__":
+    run_conversion()

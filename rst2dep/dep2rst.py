@@ -44,7 +44,10 @@ Input format - .conllu:
 
 import io, sys, os
 from argparse import ArgumentParser
-from rst2dep import NODE
+try:
+    from classes import NODE
+except:
+    from .classes import NODE
 from collections import defaultdict
 
 # Default relations to include in generated .rs3 header
