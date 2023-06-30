@@ -12,9 +12,9 @@ from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
 try:
-    from .feature_extraction import ParsedToken
+    from .feature_extraction import ParsedToken, get_tense
 except ImportError:
-    from feature_extraction import ParsedToken
+    from feature_extraction import ParsedToken, get_tense
 
 # Add hardwired genre identifiers which appear as substring in filenames here
 GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
@@ -32,7 +32,7 @@ class SIGNAL:
         return self.type + "/" + self.subtype + " (" + self.tokens + ")"
 
     def __str__(self):
-        return "-".join([self.type,self.subtype,self.tokens])
+        return "|".join([self.type,self.subtype,self.tokens])
 
 
 class SECEDGE:
@@ -101,10 +101,13 @@ class NODE:
                     head_pos = "head_pos="+tok.pos
                     head_id = "head_id="+str(tok.abs_id)
                     head_parent_pos = "parent_pos" + tok.parent.pos if tok.parent is not None else "parent_pos=_"
+                    edu_tense = "edu_tense=" + get_tense(tok)
                 if tok.pos in ["PRP", "PP"]:
                     pro = "pro"
                 else:
                     pro = "nopro"
+                if tok.func == "root":
+                    break
             if self.tokens[0].text.istitle():
                 caps = "caps"
             else:
@@ -126,7 +129,7 @@ class NODE:
                 self.heading = "date=date"
             if self.subord in ["LEFT","RIGHT"]:
                 self.subord = "subord=" + self.subord
-            feats = "|".join(feat for feat in [first_pos, head_word, head_pos, head_id, head_parent_pos, sent_id, "stype="+self.s_type, "len="+str(len(self.tokens)), head_func, self.subord, self.heading, self.caption, self.para, self.item, self.date] if feat != "_")
+            feats = "|".join(feat for feat in [first_pos, head_word, head_pos, head_id, head_parent_pos, sent_id, "stype="+self.s_type, "len="+str(len(self.tokens)), head_func, edu_tense, self.subord, self.heading, self.caption, self.para, self.item, self.date] if feat != "_")
             if len(feats)==0:
                 feats = "_"
         else:
