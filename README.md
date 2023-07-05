@@ -1,55 +1,83 @@
 # RST constituent and dependency conversion
 
-Scripts to convert Rhetorical Structure Theory trees from .rs3 format to a
+Scripts to convert Rhetorical Structure Theory trees from .rs3 and .rs4 formats to a
 dependency representation and back. 
 
-## rst2dep
+## Installation
+
+Use one of these methods to install the library:
+
+Using pip: 
+
+1. Simply run `> pip install rst2dep`
+
+Alternatively, using python:
+
+1. Download or clone the repo using `git clone https://github.com/amir-zeldes/rst2dep.git`
+2. Run `> python setup.py install`
+
+You can also download the scripts and manually run scripts (rst2dep.py, dep2rst.py, etc.), but you won't be able to run it as a module or import easily as shown below.
+
+## Usage
+
+```
+usage: python -m rst2dep [-h] [-c ROOT] [-p] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles
+
+positional arguments:
+  infiles               file name or glob pattern, e.g. *.rs3
+
+options:
+  -h, --help            show this help message and exit
+  -c ROOT, --corpus_root ROOT
+                        optional: path to corpus root folder containing a directory dep/ and a directory xml/ containing additional corpus formats
+  -p, --print           print output instead of serializing to a file
+  -f {rsd,conllu,rs3,rs4}, --format {rsd,conllu,rs3,rs4}
+                        input format
+  -d {ltr,rtl,dist}, --depth {ltr,rtl,dist}
+                        how to order depth
+  -r, --rels            use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data
+```
+
+If you have installed the library you can run the converter directly on the commandline with the options you want like this:
+
+```
+python -m rst2dep -p -f rs3 example.rs3
+```
+
+You can also import the library in your python scripts:
+
+```Python
+from rst2dep import make_rsd, dep2rst, conllu2rsd
+
+conllu = open("example.conllu").read()
+rsd =  open("example.rsd").read()
+rs3 =  open("example.rs3").read()
+
+rsd_from_conllu = conllu2rsd(conllu)
+rs3_from_rsd = rsd2rs3(rsd)
+rsd_from_rs3 = make_rsd(rs3,"",as_text=True)
+```
+
+More details on the conversions and options are given below.
+
+## Details
+
+### rst2dep
 
 This conversion follows Li et al.'s (2013) convention of taking the left-most child of multinuclear relations as the head child governed by the relation applied to the whole multinuc, and attaching each subsequent multinuclear child to the first child using the multinuclear relation; thus if a contrast multinuc with units [2-3] is an elaboration on unit [1], the child [2] will become an elaboration dependent of [1], and [3] will become a contrast dependent of child [2].
 
 By convention, multinuclear relations are converted with relation names ending in `_m`, while satellite RST relations are converted with names ending in `_r`. The original nesting depth is ignored in the conversion, but attachment point height for each dependent is retained in the third column of the output file, allowing deterministic reconstruction of the constituent tree using dep2rst, assuming a projective, hierarchically ordered tree. Conversion of non-projective .rs3 constituent trees to dependencies is also supported, but cannot be reversed currently.
 
-Optionally, users can also specify an additional folder containing subfolders `dep/` and `xml/` with .conllu parses and GUM style XML to add features to the output file.
+Optionally, users can also specify an additional folder containing subfolders `dep/` and `xml/` with .conllu parses and [GUM](https://gucorpling.org/gum/) style XML to add features to the output file. 
 
-```
-usage: rst2dep.py [-h] [-r ROOT] infiles
 
-positional arguments:
-  infiles               file name or glob pattern, e.g. *.rs3
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -r ROOT, --root ROOT  optional: path to corpus root folder containing a
-                        directory dep/ and a directory xml/ containing
-                        additional corpus formats
-  -p, --print           print output instead of serializing to a file
-```
-
-## dep2rst
+### dep2rst
 
 Discourse dependency to RST constituent conversion. The converter assumes target trees are projective and hierarchically ordered. The default strategy for determining constituent nesting order is to look for explicit attachment height encoding as created by rst2dep, otherwise competing nodes are attached as siblings. Alternatively, users can specify `-d rtl` or `-d ltr` to always attach right children below left children, or vice versa.
 
-```
-usage: dep2rst.py [-h] [-f {rsd,conllu}] [-d {ltr,rtl,dist}] [-r] file
+## Formats 
 
-Script to convert discourse dependencies to Rhetorical Structure Theory trees
-in the .rs3 format. Example usage: python dep2rst.py INFILE
-
-positional arguments:
-  file                  discourse dependency file in .rsd or .conllu format
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -f {rsd,conllu}, --format {rsd,conllu}
-                        input format
-  -d {ltr,rtl,dist}, --depth {ltr,rtl,dist}
-                        how to order depth
-  -r, --rels            use DEFAULT_RELATIONS for the .rs3 header instead of
-                        rels in input data
-  -p, --print           print output instead of serializing to a file
-```
-
-Supported input formats include .rsd and .conllu:
+Supported input formats include .rs3, .rs4 (as used by [rstWeb](https://gucorpling.org/rstweb/info/)), .rsd and .conllu:
 
 ### Input format - .rsd
 
