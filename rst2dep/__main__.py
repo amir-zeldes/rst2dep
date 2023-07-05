@@ -1,7 +1,7 @@
 from .rst2dep import make_rsd
-from .dep2rst import rsd2rs3
+from .dep2rst import rsd2rs3, conllu2rsd
 from argparse import ArgumentParser
-import sys, os
+import sys, os, io
 
 def run_conversion():
     parser = ArgumentParser(usage="python -m rst2dep [-h] [-c ROOT] [-p] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles")
