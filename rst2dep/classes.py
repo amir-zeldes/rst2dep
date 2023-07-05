@@ -1,3 +1,8 @@
+from xml.dom import minidom
+from xml.parsers.expat import ExpatError
+import re, collections
+
+
 class SIGNAL:
     def __init__(self, sigtype, sigsubtype, tokens):
         self.type = sigtype
@@ -163,3 +168,346 @@ class ParsedToken:
     def __repr__(self):
         return str(self.text) + " (" + str(self.pos) + "/" + str(self.lemma) + ") " + "<-" + str(self.func) + "- " + str(self.head_text)
 
+
+def read_rst(data, rel_hash, as_text=False):
+    if not as_text:
+        data = io.open(data, encoding="utf8").read()
+    try:
+        xmldoc = minidom.parseString(data)
+    except ExpatError:
+        message = "Invalid .rs3 file"
+        sys.stderr.write(message)
+        return message
+
+    nodes = []
+    ordered_id = {}
+    schemas = []
+    default_rst = ""
+
+    # Get relation names and their types, append type suffix to disambiguate
+    # relation names that can be both RST and multinuc
+    item_list = xmldoc.getElementsByTagName("rel")
+    for rel in item_list:
+        relname = re.sub(r"[:;,]", "", rel.attributes["name"].value)
+        if rel.hasAttribute("type"):
+            rel_hash[relname + "_" + rel.attributes["type"].value[0:1]] = rel.attributes["type"].value
+            if rel.attributes["type"].value == "rst" and default_rst == "":
+                default_rst = relname + "_" + rel.attributes["type"].value[0:1]
+        else:  # This is a schema relation
+            schemas.append(relname)
+
+    item_list = xmldoc.getElementsByTagName("segment")
+    if len(item_list) < 1:
+        return '<div class="warn">No segment elements found in .rs3 file</div>'
+
+    id_counter = 0
+
+    # Get hash to reorder EDUs and spans according to the order of appearance in .rs3 file
+    for segment in item_list:
+        id_counter += 1
+        ordered_id[segment.attributes["id"].value] = id_counter
+    item_list = xmldoc.getElementsByTagName("group")
+    for group in item_list:
+        id_counter += 1
+        ordered_id[group.attributes["id"].value] = id_counter
+    ordered_id["0"] = 0
+
+    element_types = {}
+    node_elements = xmldoc.getElementsByTagName("segment")
+    for element in node_elements:
+        element_types[element.attributes["id"].value] = "edu"
+    node_elements = xmldoc.getElementsByTagName("group")
+    for element in node_elements:
+        element_types[element.attributes["id"].value] = element.attributes["type"].value
+
+
+    # Collect all children of multinuc parents to prioritize which potentially multinuc relation they have
+    item_list = xmldoc.getElementsByTagName("segment") + xmldoc.getElementsByTagName("group")
+    multinuc_children = collections.defaultdict(lambda : collections.defaultdict(int))
+    for elem in item_list:
+        if elem.attributes.length >= 3:
+            parent = elem.attributes["parent"].value
+            relname = elem.attributes["relname"].value
+            # Tolerate schemas by treating as spans
+            if relname in schemas:
+                relname = "span"
+            relname = re.sub(r"[:;,]", "", relname)  # Remove characters used for undo logging, not allowed in rel names
+            if parent in element_types:
+                if element_types[parent] == "multinuc" and relname+"_m" in rel_hash:
+                    multinuc_children[parent][relname] += 1
+
+    id_counter = 0
+    item_list = xmldoc.getElementsByTagName("segment")
+    for segment in item_list:
+        id_counter += 1
+        if segment.hasAttribute("parent"):
+            parent = segment.attributes["parent"].value
+        else:
+            parent = "0"
+        if segment.hasAttribute("relname"):
+            relname = segment.attributes["relname"].value
+        else:
+            relname = default_rst
+
+        # Tolerate schemas, but no real support yet:
+        if relname in schemas:
+            relname = "span"
+            relname = re.sub(r"[:;,]", "", relname)  # remove characters used for undo logging, not allowed in rel names
+
+        # Note that in RSTTool, a multinuc child with a multinuc compatible relation is always interpreted as multinuc
+        if parent in multinuc_children:
+            if len(multinuc_children[parent]) > 0:
+                key_list = list(multinuc_children[parent])[:]
+                for key in key_list:
+                    if multinuc_children[parent][key] < 2:
+                        del multinuc_children[parent][key]
+
+        if parent in element_types:
+            if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (
+                    relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
+                relname = relname + "_m"
+            elif relname != "span":
+                relname = relname + "_r"
+        else:
+            if not relname.endswith("_r") and len(relname) > 0:
+                relname = relname + "_r"
+        edu_id = segment.attributes["id"].value
+        contents = segment.childNodes[0].data.strip()
+        nodes.append(
+            [str(ordered_id[edu_id]), id_counter, id_counter, str(ordered_id[parent]), 0, "edu", contents, relname])
+
+    item_list = xmldoc.getElementsByTagName("group")
+    for group in item_list:
+        if group.attributes.length == 4:
+            parent = group.attributes["parent"].value
+        else:
+            parent = "0"
+        if group.attributes.length == 4:
+            relname = group.attributes["relname"].value
+            # Tolerate schemas by treating as spans
+            if relname in schemas:
+                relname = "span"
+
+            relname = re.sub(r"[:;,]", "", relname)  # remove characters used for undo logging, not allowed in rel names
+            # Note that in RSTTool, a multinuc child with a multinuc compatible relation is always interpreted as multinuc
+
+            if parent in multinuc_children:
+                if len(multinuc_children[parent])>0:
+                    key_list = list(multinuc_children[parent])[:]
+                    for key in key_list:
+                        if multinuc_children[parent][key] < 2:
+                            del multinuc_children[parent][key]
+
+            if parent in element_types:
+                if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
+                    relname = relname + "_m"
+                elif relname != "span":
+                    relname = relname + "_r"
+            else:
+                relname = ""
+        else:
+            relname = ""
+        group_id = group.attributes["id"].value
+        group_type = group.attributes["type"].value
+        contents = ""
+        nodes.append([str(ordered_id[group_id]), 0, 0, str(ordered_id[parent]), 0, group_type, contents, relname])
+
+    elements = {}
+    for row in nodes:
+        elements[row[0]] = NODE(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], "")
+
+    for element in elements:
+        if elements[element].kind == "edu":
+            get_left_right(element, elements, 0, 0, rel_hash)
+
+    for element in elements:
+        node = elements[element]
+        get_depth(node,node,elements)
+
+    for nid in elements:
+        node = elements[nid]
+        if node.parent != "0":
+            elements[node.parent].children.append(nid)
+            if node.left == elements[node.parent].left:
+                elements[node.parent].leftmost_child = nid
+
+    # Ensure left most multinuc children are recognized even if there is an rst dependent further to the left
+    for nid in elements:
+        node = elements[nid]
+        if node.kind == "multinuc" and node.leftmost_child == "":
+            min_left = node.right
+            leftmost = ""
+            for child_id in node.children:
+                child = elements[child_id]
+                if child.relname.endswith("_m"):  # Using _m suffix to recognize multinuc relations
+                    if child.left < min_left:
+                        min_left = child.left
+                        leftmost = child_id
+            node.leftmost_child = leftmost
+
+    secedge_list = xmldoc.getElementsByTagName("secedge")
+    secedges = {}
+    # Handle secedges, which look like this:
+    # <secedge id="127-28" source="127" target="28" relname="causal-cause"/>
+    for sec in secedge_list:
+        source = str(sec.attributes["source"].value)
+        target = str(sec.attributes["target"].value)
+        relname = sec.attributes["relname"].value
+        secedges[source + "-" + target] = SECEDGE(source,target,relname)
+
+    signal_list = xmldoc.getElementsByTagName("signal")
+    for sig in signal_list:
+        nid = str(sig.attributes["source"].value)
+        if nid not in elements:
+            if "-" in nid:
+                if nid not in secedges:
+                    raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
+                else:
+                    secedges[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+                    continue
+            else:
+                raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
+        elements[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+
+    for secedge in secedges:
+        elements[secedge] = secedges[secedge]
+        elements[secedge].kind = "secedge"
+
+    return elements
+
+
+def get_left_right(node_id, nodes, min_left, max_right, rel_hash):
+    """
+    Calculate leftmost and rightmost EDU covered by a NODE object. For EDUs this is the number of the EDU
+    itself. For spans and multinucs, the leftmost and rightmost child dominated by the NODE is found recursively.
+    """
+    if nodes[node_id].parent != "0" and node_id != "0":
+        parent = nodes[nodes[node_id].parent]
+        if min_left > nodes[node_id].left or min_left == 0:
+            if nodes[node_id].left != 0:
+                min_left = nodes[node_id].left
+        if max_right < nodes[node_id].right or max_right == 0:
+            max_right = nodes[node_id].right
+        if nodes[node_id].relname == "span":
+            if parent.left > min_left or parent.left == 0:
+                parent.left = min_left
+            if parent.right < max_right:
+                parent.right = max_right
+        elif nodes[node_id].relname in rel_hash:
+            if parent.kind == "multinuc" and rel_hash[nodes[node_id].relname] =="multinuc":
+                if parent.left > min_left or parent.left == 0:
+                    parent.left = min_left
+                if parent.right < max_right:
+                    parent.right = max_right
+        get_left_right(parent.id, nodes, min_left, max_right, rel_hash)
+
+
+def get_depth(orig_node, probe_node, nodes):
+    """
+    Calculate graphical nesting depth of a node based on the node list graph.
+    Note that RST parentage without span/multinuc does NOT increase depth.
+    """
+    if probe_node.parent != "0":
+        parent = nodes[probe_node.parent]
+        if parent.kind != "edu" and (probe_node.relname == "span" or parent.kind == "multinuc" and probe_node.relkind =="multinuc"):
+            orig_node.depth += 1
+            orig_node.sortdepth +=1
+        elif parent.kind == "edu":
+            orig_node.sortdepth += 1
+        get_depth(orig_node, parent, nodes)
+
+
+def determinstic_groups(nodes):
+    """
+    Create an ID map with a deterministic ordering of group IDs based on a depth first climb of the ordered EDUs
+    """
+    edus = {e.id:e for e in nodes.values() if e.kind == "edu"}
+    id_map = {str(e.id):str(e.id) for e in edus.values()}
+    max_id = sorted([int(e.id) for e in edus.values()])[-1]
+    for edu_id in sorted(edus,key=lambda x: int(edus[x].id)):
+        parent = edus[edu_id].parent
+        while int(parent) != 0:
+            if parent not in id_map:
+                max_id += 1
+                id_map[str(parent)] = str(max_id)
+            parent = nodes[parent].parent
+    return id_map
+
+
+def sequential_ids(rst_xml, id_map=None):
+    # Ensure no gaps in node IDs and corresponding adjustments to signals and secedges.
+    # Assume input xml IDs are already sorted, but with possible gaps
+    output = []
+    temp = []
+    if id_map is None:
+        current_id = 1
+        id_map = {}
+        for line in rst_xml.split("\n"):
+            if ' id="' in line:
+                xml_id = re.search(r' id="([^"]+)"', line).group(1)
+                if ('<segment ' in line or '<group ' in line):
+                    id_map[xml_id] = str(current_id)
+                    line = line.replace(' id="' + xml_id + '"', ' id="' + str(current_id) + '"')
+                    current_id += 1
+            temp.append(line)
+    else:
+        for line in rst_xml.split("\n"):
+            if ' id="' in line:
+                xml_id = re.search(r' id="([^"]+)"', line).group(1)
+                if ('<segment ' in line or '<group ' in line):
+                    line = line.replace(' id="' + xml_id + '"', ' id="' + id_map[xml_id] + '"')
+            temp.append(line)
+
+    for line in temp:
+        if ' id="' in line:
+            if ' parent=' in line and ('<segment ' in line or '<group ' in line):
+                parent_id = re.search(r' parent="([^"]+)"', line).group(1)
+                new_parent = id_map[parent_id]
+                line = line.replace(' parent="' + parent_id + '"', ' parent="' + str(new_parent) + '"')
+            elif "<secedge " in line:
+                xml_id = re.search(r' id="([^"]+)"', line).group(1)
+                src, trg = xml_id.split("-")
+                line = line.replace(' source="' + src + '"', ' source="' + id_map[src] + '"')
+                line = line.replace(' target="' + trg + '"', ' target="' + id_map[trg] + '"')
+                line = line.replace(' id="' + xml_id + '"', ' id="' + id_map[src] + '-' + id_map[trg] + '"')
+        elif "<signal " in line:
+            source = re.search(r' source="([^"]+)"', line).group(1)
+            if "-" in source:
+                src, trg = source.split("-")
+                line = line.replace(' source="' + source + '"', ' source="' + id_map[src] + '-' + id_map[trg] + '"')
+            else:
+                line = line.replace(' source="' + source + '"', ' source="' + id_map[source] + '"')
+        output.append(line)
+
+    output = "\n".join(output)
+    output = order_groups(output)
+
+    return output
+
+def order_groups(rst_xml):
+    start = []
+    groups = []
+    end = []
+    in_start = True
+    for line in rst_xml.split("\n"):
+        if "<group " in line:
+            in_start = False
+            groups.append(line)
+        elif in_start:
+            start.append(line)
+        else:
+            end.append(line)
+    groups.sort(key=lambda x: int(re.search(r'<group id=.([0-9]+)',x).group(1)))
+
+    output = start + groups + end
+
+    return "\n".join(output)
+
+
+def make_deterministic_nodes(rst_xml):
+    ordered_xml = order_groups(rst_xml)
+    no_gaps_xml = sequential_ids(ordered_xml,id_map=None)
+    nodes = read_rst(no_gaps_xml, {}, as_text=True)
+    id_map = determinstic_groups(nodes)
+    fixed = sequential_ids(no_gaps_xml,id_map=id_map)
+    return fixed

@@ -8,15 +8,13 @@ to a CoNLL-style dependency representation, a.k.a. .rsd.
 
 
 import re, io, ntpath, collections, sys
-from xml.dom import minidom
-from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
 try:
     from .feature_extraction import get_tense
-    from .classes import NODE, SIGNAL, SECEDGE, ParsedToken
+    from .classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst
 except:
     from feature_extraction import get_tense
-    from classes import NODE, SIGNAL, SECEDGE, ParsedToken
+    from classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst
 
 # Add hardwired genre identifiers which appear as substring in filenames here
 GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
@@ -24,279 +22,29 @@ GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"int
           "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",}
 
 
-def get_left_right(node_id, nodes, min_left, max_right, rel_hash):
-    """
-    Calculate leftmost and rightmost EDU covered by a NODE object. For EDUs this is the number of the EDU
-    itself. For spans and multinucs, the leftmost and rightmost child dominated by the NODE is found recursively.
-    """
-    if nodes[node_id].parent != "0" and node_id != "0":
-        parent = nodes[nodes[node_id].parent]
-        if min_left > nodes[node_id].left or min_left == 0:
-            if nodes[node_id].left != 0:
-                min_left = nodes[node_id].left
-        if max_right < nodes[node_id].right or max_right == 0:
-            max_right = nodes[node_id].right
-        if nodes[node_id].relname == "span":
-            if parent.left > min_left or parent.left == 0:
-                parent.left = min_left
-            if parent.right < max_right:
-                parent.right = max_right
-        elif nodes[node_id].relname in rel_hash:
-            if parent.kind == "multinuc" and rel_hash[nodes[node_id].relname] =="multinuc":
-                if parent.left > min_left or parent.left == 0:
-                    parent.left = min_left
-                if parent.right < max_right:
-                    parent.right = max_right
-        get_left_right(parent.id, nodes, min_left, max_right, rel_hash)
-
-
-def get_depth(orig_node, probe_node, nodes):
-    """
-    Calculate graphical nesting depth of a node based on the node list graph.
-    Note that RST parentage without span/multinuc does NOT increase depth.
-    """
-    if probe_node.parent != "0":
-        parent = nodes[probe_node.parent]
-        if parent.kind != "edu" and (probe_node.relname == "span" or parent.kind == "multinuc" and probe_node.relkind =="multinuc"):
-            orig_node.depth += 1
-            orig_node.sortdepth +=1
-        elif parent.kind == "edu":
-            orig_node.sortdepth += 1
-        get_depth(orig_node, parent, nodes)
-
-
-def get_distance(node, parent, nodes):
-    head = node.parent
-    dist = 1
-    encountered = {}
-    while head != parent.id:
-        encountered[head] = dist
-        head = nodes[head].parent
-        dist += 1
-        if head == "0":
-            break
-    if head == "0":
-        # common ancestor
-        dist2 = 1
-        head = parent.parent
-        while head != "0":
-            if head in encountered:
-                if nodes[head].kind == "multinuc" and node.dep_rel.endswith("_m"):  # multinucs should have priority against tying incoming RST rels
-                    dist2 -= 1
-                return dist2 #+ encountered[head]
-            else:
-                dist2 += 1
-                head = nodes[head].parent
-        return dist2 #+ encountered[head]
+def find_dep_head(nodes, source, exclude, block):
+    parent = nodes[source].parent
+    if parent != "0":
+        if nodes[parent].kind == "multinuc":
+            for child in nodes[parent].children:
+                # Check whether exclude and child are under the same multinuc and exclude is further to the left
+                if nodes[child].left > int(exclude) and nodes[child].left >= nodes[parent].left and int(exclude) >= nodes[parent].left:
+                    block.append(child)
     else:
-        # direct ancestry
-        return 0  # dist
-
-
-def read_rst(data, rel_hash, as_text=False):
-    if not as_text:
-        data = io.open(data, encoding="utf8").read()
-    try:
-        xmldoc = minidom.parseString(data)
-    except ExpatError:
-        message = "Invalid .rs3 file"
-        return message
-
-    nodes = []
-    ordered_id = {}
-    schemas = []
-    default_rst = ""
-
-    # Get relation names and their types, append type suffix to disambiguate
-    # relation names that can be both RST and multinuc
-    item_list = xmldoc.getElementsByTagName("rel")
-    for rel in item_list:
-        relname = re.sub(r"[:;,]", "", rel.attributes["name"].value)
-        if rel.hasAttribute("type"):
-            rel_hash[relname + "_" + rel.attributes["type"].value[0:1]] = rel.attributes["type"].value
-            if rel.attributes["type"].value == "rst" and default_rst == "":
-                default_rst = relname + "_" + rel.attributes["type"].value[0:1]
-        else:  # This is a schema relation
-            schemas.append(relname)
-
-    item_list = xmldoc.getElementsByTagName("segment")
-    if len(item_list) < 1:
-        return '<div class="warn">No segment elements found in .rs3 file</div>'
-
-    id_counter = 0
-
-    # Get hash to reorder EDUs and spans according to the order of appearance in .rs3 file
-    for segment in item_list:
-        id_counter += 1
-        ordered_id[segment.attributes["id"].value] = id_counter
-    item_list = xmldoc.getElementsByTagName("group")
-    for group in item_list:
-        id_counter += 1
-        ordered_id[group.attributes["id"].value] = id_counter
-    ordered_id["0"] = 0
-
-    element_types = {}
-    node_elements = xmldoc.getElementsByTagName("segment")
-    for element in node_elements:
-        element_types[element.attributes["id"].value] = "edu"
-    node_elements = xmldoc.getElementsByTagName("group")
-    for element in node_elements:
-        element_types[element.attributes["id"].value] = element.attributes["type"].value
-
-
-    # Collect all children of multinuc parents to prioritize which potentially multinuc relation they have
-    item_list = xmldoc.getElementsByTagName("segment") + xmldoc.getElementsByTagName("group")
-    multinuc_children = collections.defaultdict(lambda : collections.defaultdict(int))
-    for elem in item_list:
-        if elem.attributes.length >= 3:
-            parent = elem.attributes["parent"].value
-            relname = elem.attributes["relname"].value
-            # Tolerate schemas by treating as spans
-            if relname in schemas:
-                relname = "span"
-            relname = re.sub(r"[:;,]", "", relname)  # Remove characters used for undo logging, not allowed in rel names
-            if parent in element_types:
-                if element_types[parent] == "multinuc" and relname+"_m" in rel_hash:
-                    multinuc_children[parent][relname] += 1
-
-    id_counter = 0
-    item_list = xmldoc.getElementsByTagName("segment")
-    for segment in item_list:
-        id_counter += 1
-        if segment.hasAttribute("parent"):
-            parent = segment.attributes["parent"].value
+        # Prevent EDU children of root from being dep head - only multinuc children possible at this point
+        for child in nodes[source].children:
+            if nodes[child].kind == "edu":
+                block.append(child)
+    candidate = seek_other_edu_child(nodes, nodes[source].parent, exclude, block)
+    if candidate is not None:
+        return candidate
+    else:
+        if parent == "0":
+            return None
         else:
-            parent = "0"
-        if segment.hasAttribute("relname"):
-            relname = segment.attributes["relname"].value
-        else:
-            relname = default_rst
-
-        # Tolerate schemas, but no real support yet:
-        if relname in schemas:
-            relname = "span"
-            relname = re.sub(r"[:;,]", "", relname)  # remove characters used for undo logging, not allowed in rel names
-
-        # Note that in RSTTool, a multinuc child with a multinuc compatible relation is always interpreted as multinuc
-        if parent in multinuc_children:
-            if len(multinuc_children[parent]) > 0:
-                key_list = list(multinuc_children[parent])[:]
-                for key in key_list:
-                    if multinuc_children[parent][key] < 2:
-                        del multinuc_children[parent][key]
-
-        if parent in element_types:
-            if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (
-                    relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
-                relname = relname + "_m"
-            elif relname != "span":
-                relname = relname + "_r"
-        else:
-            if not relname.endswith("_r") and len(relname) > 0:
-                relname = relname + "_r"
-        edu_id = segment.attributes["id"].value
-        contents = segment.childNodes[0].data.strip()
-        nodes.append(
-            [str(ordered_id[edu_id]), id_counter, id_counter, str(ordered_id[parent]), 0, "edu", contents, relname])
-
-    item_list = xmldoc.getElementsByTagName("group")
-    for group in item_list:
-        if group.attributes.length == 4:
-            parent = group.attributes["parent"].value
-        else:
-            parent = "0"
-        if group.attributes.length == 4:
-            relname = group.attributes["relname"].value
-            # Tolerate schemas by treating as spans
-            if relname in schemas:
-                relname = "span"
-
-            relname = re.sub(r"[:;,]", "", relname)  # remove characters used for undo logging, not allowed in rel names
-            # Note that in RSTTool, a multinuc child with a multinuc compatible relation is always interpreted as multinuc
-
-            if parent in multinuc_children:
-                if len(multinuc_children[parent])>0:
-                    key_list = list(multinuc_children[parent])[:]
-                    for key in key_list:
-                        if multinuc_children[parent][key] < 2:
-                            del multinuc_children[parent][key]
-
-            if parent in element_types:
-                if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
-                    relname = relname + "_m"
-                elif relname != "span":
-                    relname = relname + "_r"
-            else:
-                relname = ""
-        else:
-            relname = ""
-        group_id = group.attributes["id"].value
-        group_type = group.attributes["type"].value
-        contents = ""
-        nodes.append([str(ordered_id[group_id]), 0, 0, str(ordered_id[parent]), 0, group_type, contents, relname])
-
-    elements = {}
-    for row in nodes:
-        elements[row[0]] = NODE(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], "")
-
-    for element in elements:
-        if elements[element].kind == "edu":
-            get_left_right(element, elements, 0, 0, rel_hash)
-
-    for element in elements:
-        node = elements[element]
-        get_depth(node,node,elements)
-
-    for nid in elements:
-        node = elements[nid]
-        if node.parent != "0":
-            elements[node.parent].children.append(nid)
-            if node.left == elements[node.parent].left:
-                elements[node.parent].leftmost_child = nid
-
-    # Ensure left most multinuc children are recognized even if there is an rst dependent further to the left
-    for nid in elements:
-        node = elements[nid]
-        if node.kind == "multinuc" and node.leftmost_child == "":
-            min_left = node.right
-            leftmost = ""
-            for child_id in node.children:
-                child = elements[child_id]
-                if child.relname.endswith("_m"):  # Using _m suffix to recognize multinuc relations
-                    if child.left < min_left:
-                        min_left = child.left
-                        leftmost = child_id
-            node.leftmost_child = leftmost
-
-    secedge_list = xmldoc.getElementsByTagName("secedge")
-    secedges = {}
-    # Handle secedges, which look like this:
-    # <secedge id="127-28" source="127" target="28" relname="causal-cause"/>
-    for sec in secedge_list:
-        source = str(sec.attributes["source"].value)
-        target = str(sec.attributes["target"].value)
-        relname = sec.attributes["relname"].value
-        secedges[source + "-" + target] = SECEDGE(source,target,relname)
-
-    signal_list = xmldoc.getElementsByTagName("signal")
-    for sig in signal_list:
-        nid = str(sig.attributes["source"].value)
-        if nid not in elements:
-            if "-" in nid:
-                if nid not in secedges:
-                    raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
-                else:
-                    secedges[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
-                    continue
-            else:
-                raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
-        elements[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
-
-    for secedge in secedges:
-        elements[secedge] = secedges[secedge]
-        elements[secedge].kind = "secedge"
-
-    return elements
+            if parent not in nodes:
+                raise IOError("Node with id " + source + " has parent id " + parent + " which is not listed\n")
+            return find_dep_head(nodes, parent, exclude, block)
 
 
 def seek_other_edu_child(nodes, source, exclude, block):
@@ -346,29 +94,32 @@ def seek_other_edu_child(nodes, source, exclude, block):
     return None
 
 
-def find_dep_head(nodes, source, exclude, block):
-    parent = nodes[source].parent
-    if parent != "0":
-        if nodes[parent].kind == "multinuc":
-            for child in nodes[parent].children:
-                # Check whether exclude and child are under the same multinuc and exclude is further to the left
-                if nodes[child].left > int(exclude) and nodes[child].left >= nodes[parent].left and int(exclude) >= nodes[parent].left:
-                    block.append(child)
+def get_distance(node, parent, nodes):
+    head = node.parent
+    dist = 1
+    encountered = {}
+    while head != parent.id:
+        encountered[head] = dist
+        head = nodes[head].parent
+        dist += 1
+        if head == "0":
+            break
+    if head == "0":
+        # common ancestor
+        dist2 = 1
+        head = parent.parent
+        while head != "0":
+            if head in encountered:
+                if nodes[head].kind == "multinuc" and node.dep_rel.endswith("_m"):  # multinucs should have priority against tying incoming RST rels
+                    dist2 -= 1
+                return dist2 #+ encountered[head]
+            else:
+                dist2 += 1
+                head = nodes[head].parent
+        return dist2 #+ encountered[head]
     else:
-        # Prevent EDU children of root from being dep head - only multinuc children possible at this point
-        for child in nodes[source].children:
-            if nodes[child].kind == "edu":
-                block.append(child)
-    candidate = seek_other_edu_child(nodes, nodes[source].parent, exclude, block)
-    if candidate is not None:
-        return candidate
-    else:
-        if parent == "0":
-            return None
-        else:
-            if parent not in nodes:
-                raise IOError("Node with id " + source + " has parent id " + parent + " which is not listed\n")
-            return find_dep_head(nodes, parent, exclude, block)
+        # direct ancestry
+        return 0  # dist
 
 
 def get_nonspan_rel(nodes,node):

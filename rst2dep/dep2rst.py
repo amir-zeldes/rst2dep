@@ -45,9 +45,9 @@ Input format - .conllu:
 import io, sys, os
 from argparse import ArgumentParser
 try:
-    from classes import NODE
+    from classes import NODE, make_deterministic_nodes
 except:
-    from .classes import NODE
+    from .classes import NODE, make_deterministic_nodes
 from collections import defaultdict
 
 # Default relations to include in generated .rs3 header
@@ -322,7 +322,9 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
         signals_out = ""
 
     output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + signals_out + "\n\t</body>\n</rst>\n"
-    output = clean_xml(output)
+
+    # Ensure deterministic node numbering
+    output = make_deterministic_nodes(output)
 
     return output
 
