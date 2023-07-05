@@ -6,9 +6,9 @@ in the conll10/conllu and CWB XML formats.
 import os, re, io
 import ntpath
 try:
-    from .classes import ParsedToken
+    from .classes import ParsedToken, get_tense
 except:
-    from classes import ParsedToken
+    from classes import ParsedToken, get_tense
 
 def get_tok_info(docname,corpus_root):
 
@@ -103,54 +103,3 @@ def get_tok_info(docname,corpus_root):
 
     return tokens
 
-
-def get_tense(tok):
-    tense = "None"
-    if tok.pos in ["VBD","VHD","VVD"]:
-        tense = "PastSimp"
-    elif tok.pos in ["VBP","VHP","VVP","VBZ","VHZ","VVZ"]:
-        tense = "Pres"
-    elif tok.pos in ["VBG","VVG","VHG"]:
-        if any([t.lemma == "be" for t in tok.children]):
-            if any([t.pos == "VBD" for t in tok.children if t.lemma=="be"]):
-                tense = "PastProg"
-            elif any([t.lemma == "have" and t.pos in ["VHP","VHZ","VBZ","VBP"] for t in tok.children]):
-                tense = "PresPerfProg"
-            else:
-                tense = "PresProg"
-    elif tok.pos in ["VBN","VVN","VHN"]:
-        if any([t.lemma == "have" for t in tok.children]):
-            if any([t.pos in ["VHD","VBD"] for t in tok.children if t.lemma == "have"]):
-                if any([t.lemma == "be" and t.pos == "VBN" for t in tok.children]):
-                    tense = "PastPerfProg"
-                else:
-                    tense = "PastPerf"
-            else:
-                if any([t.lemma in ["will","shall"] for t in tok.children]):
-                    tense = "FutPerf"
-                else:
-                    tense = "PresPerf"
-    elif tok.pos in ["VB","VV","VH"]:
-        if any([t.lemma == "will" for t in tok.children]):
-            if any([t.lemma == "have" for t in tok.children]):
-                tense = "FutPerf"
-            else:
-                tense = "Fut"
-        elif any([t.pos == "MD" for t in tok.children]):
-            tense = "Modal"
-    else:  # Check for copula
-        if any([t.lemma == "be" and t.pos in ["VBZ","VBP"] for t in tok.children]):
-            tense = "Pres"
-        elif any([t.lemma == "be" and t.pos in ["VBD"] for t in tok.children]):
-            tense = "PastSimp"
-        elif any([t.lemma == "be" and t.pos in ["VBN"] for t in tok.children]):
-            if any([t.pos in ["VHD","VBD"] for t in tok.children if t.lemma == "have"]):
-                tense = "PastPerf"
-            elif any([t.pos in ["VHZ","VBZ"] for t in tok.children if t.lemma == "have"]):
-                tense = "PresPerf"
-        elif any([t.lemma == "be" and t.pos in ["VB"] for t in tok.children]):
-            if any([t.lemma == "will" for t in tok.children]):
-                tense = "Fut"
-            elif any([t.pos == "MD" for t in tok.children]):
-                tense = "Modal"
-    return tense

@@ -10,11 +10,9 @@ to a CoNLL-style dependency representation, a.k.a. .rsd.
 import re, io, ntpath, collections, sys
 from argparse import ArgumentParser
 try:
-    from .feature_extraction import get_tense
-    from .classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst
+    from .classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst, get_tense
 except:
-    from feature_extraction import get_tense
-    from classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst
+    from classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst, get_tense
 
 # Add hardwired genre identifiers which appear as substring in filenames here
 GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
