@@ -1,6 +1,6 @@
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
-import re, collections
+import re, collections, sys, io
 
 
 class SIGNAL:
