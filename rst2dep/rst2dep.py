@@ -10,9 +10,9 @@ to a CoNLL-style dependency representation, a.k.a. .rsd.
 import re, io, ntpath, collections, sys
 from argparse import ArgumentParser
 try:
-    from .classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst, get_tense
+    from .classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst, get_tense, rangify
 except:
-    from classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst, get_tense
+    from classes import NODE, SIGNAL, SECEDGE, ParsedToken, read_rst, get_tense, rangify
 
 # Add hardwired genre identifiers which appear as substring in filenames here
 GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
@@ -20,7 +20,7 @@ GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"int
           "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",}
 
 
-def find_dep_head(nodes, source, exclude, block):
+def find_dep_head(nodes, source, exclude, block, algorithm="li"):
     parent = nodes[source].parent
     if parent != "0":
         if nodes[parent].kind == "multinuc":
@@ -33,7 +33,7 @@ def find_dep_head(nodes, source, exclude, block):
         for child in nodes[source].children:
             if nodes[child].kind == "edu":
                 block.append(child)
-    candidate = seek_other_edu_child(nodes, nodes[source].parent, exclude, block)
+    candidate = seek_other_edu_child(nodes, nodes[source].parent, exclude, block, algorithm=algorithm)
     if candidate is not None:
         return candidate
     else:
@@ -42,10 +42,10 @@ def find_dep_head(nodes, source, exclude, block):
         else:
             if parent not in nodes:
                 raise IOError("Node with id " + source + " has parent id " + parent + " which is not listed\n")
-            return find_dep_head(nodes, parent, exclude, block)
+            return find_dep_head(nodes, parent, exclude, block, algorithm=algorithm)
 
 
-def seek_other_edu_child(nodes, source, exclude, block):
+def seek_other_edu_child(nodes, source, exclude, block, algorithm="li"):
     """
     Recursive function to find some child of a node which is an EDU and does not have the excluded ID
 
@@ -81,14 +81,23 @@ def seek_other_edu_child(nodes, source, exclude, block):
                 # If it's a span, check below it, following only span relation paths
                 if nodes[source].kind == "span":
                     if nodes[child_id].relname == "span":
-                        candidate = seek_other_edu_child(nodes, child_id, exclude, block)
+                        candidate = seek_other_edu_child(nodes, child_id, exclude, block, algorithm=algorithm)
                         if candidate is not None:
                             return candidate
-                # If it's a multinuc, only consider the left most child as representing it topographically
-                elif nodes[source].kind == "multinuc" and child_id == nodes[source].leftmost_child:
-                    candidate = seek_other_edu_child(nodes, child_id, exclude, block)
-                    if candidate is not None:
-                        return candidate
+                # If it's a multinuc...
+                elif nodes[source].kind == "multinuc":
+                    if algorithm == "li":
+                        # In Li et al. conversion, only consider the left most child as representing the multinuc topologically
+                        if child_id == nodes[source].leftmost_child:
+                            candidate = seek_other_edu_child(nodes, child_id, exclude, block, algorithm=algorithm)
+                            if candidate is not None:
+                                return candidate
+                    elif algorithm == "chain":  # In chain conversion, consider next multinuc child, which should already be sorted
+                        candidate = seek_other_edu_child(nodes, child_id, exclude, block, algorithm=algorithm)
+                        if candidate is not None:
+                            return candidate
+                    elif algorithm == "hirao":  # TODO: Implement Hirao et al. conversion
+                        raise NotImplementedError("Hirao et al. conversion not yet implemented")
     return None
 
 
@@ -142,8 +151,11 @@ def get_nonspan_rel(nodes,node):
             return get_nonspan_rel(nodes,nodes[node.parent])
 
 
-def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"):
+def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll", algorithm="li"):
     nodes = read_rst(rstfile,{},as_text=as_text)
+
+    text = " ".join([nodes[nid].text for nid in nodes if nodes[nid].kind=="edu"])
+    document_tokens = text.split(" ")
 
     # Store any secedge info and remove from nodes
     secedges = []
@@ -231,7 +243,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     for nid in nodes:
         node = nodes[nid]
-        dep_parent = find_dep_head(nodes, nid, nid, [])
+        dep_parent = find_dep_head(nodes, nid, nid, [], algorithm=algorithm)
         if dep_parent is None:
             # This is the root
             dep_parent = "0"
@@ -278,7 +290,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     for node in out_graph:
         if out_mode == "conll":
-            output.append(node.out_conll(feats=feats))
+            output.append(node.out_conll(feats=feats,document_tokens=document_tokens))
         else:
             output.append(node.out_malt())
 
@@ -291,7 +303,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
         trg_dist = str(nodes[secedge.target].height)
         signals = []
         for sig in secedge.signals:
-            signals.append("-".join([sig.type,sig.subtype,sig.tokens]))
+            signals.append(sig.pretty_print(tokens=document_tokens))
         signals = ";".join(sorted(signals)) if len(signals)>0 else "_"
         src2secedges[dep_src].add(":".join([dep_trg,secedge.relname,src_dist,trg_dist,signals]))
 
@@ -317,6 +329,7 @@ if __name__ == "__main__":
     parser.add_argument("-c","--corpus_root",action="store",dest="root",default="",help="optional: path to corpus root folder containing a directory dep/ and \n"+
                                                            "a directory xml/ containing additional corpus formats")
     parser.add_argument("-p","--print",dest="prnt",action="store_true",help="print output instead of serializing to a file")
+    parser.add_argument("-a","--algorithm",choices=["li","chain"],help="dependency head algorithm (default: li)",default="li")
 
     options = parser.parse_args()
 
@@ -329,7 +342,7 @@ if __name__ == "__main__":
         files = [inpath]
 
     for file_ in files:
-        output = make_rsd(file_, options.root)
+        output = make_rsd(file_, options.root, algorithm=options.algorithm)
         if options.prnt:
             print(output)
         else:

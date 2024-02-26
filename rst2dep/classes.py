@@ -3,11 +3,40 @@ from xml.parsers.expat import ExpatError
 import re, collections, sys, io
 
 
+def rangify(token_string):
+    # Reformat comma separated token ID into comma separated ranges with hyphens where needed
+    # e.g. 1,2,3,4,5,6,7,8,9,10,13,14,15 -> 1-10,13-15
+    if len(token_string) == 0:
+        return ""
+    tokens = token_string.split(",")
+    tokens = [int(tok) for tok in tokens]
+    tokens.sort()
+    ranges = []
+    start = tokens[0]
+    end = tokens[0]
+    for tok in tokens[1:]:
+        if tok == end + 1:
+            end = tok
+        else:
+            ranges.append(str(start) + "-" + str(end)) if end > start else ranges.append(str(start))
+            start = tok
+            end = tok
+    ranges.append(str(start) + "-" + str(end)) if end > start else ranges.append(str(start))
+    return ",".join(ranges)
+
+
 class SIGNAL:
     def __init__(self, sigtype, sigsubtype, tokens):
         self.type = sigtype
         self.subtype = sigsubtype
         self.tokens = tokens
+
+    def pretty_print(self, tokens=None):
+        subtype = self.subtype
+        if self.subtype in ["dm","orphan"] and tokens is not None:
+            sorted_tokens = sorted([int(t) for t in self.tokens.split(",")])
+            subtype = " ".join(tokens[int(t)-1].lower() for t in sorted_tokens)
+        return "-".join([self.type, subtype, rangify(self.tokens)])
 
     def __repr__(self):
         return self.type + "/" + self.subtype + " (" + self.tokens + ")"
@@ -65,7 +94,7 @@ class NODE:
             token_lines.append("|||".join([tok.id,tok.text,tok.lemma,tok.pos,tok.pos,tok.morph,tok.head,tok.func,"_","_"]))
         self.parse = "///".join(token_lines)
 
-    def out_conll(self,feats=False):
+    def out_conll(self,feats=False,document_tokens=None):
         self.rebuild_parse()
         head_word = "_"
         if len(self.tokens) == 0:  # No token information
@@ -116,7 +145,7 @@ class NODE:
         else:
             feats = "_"
 
-        signals = ";".join([str(sig) for sig in self.signals]) if len(self.signals) > 0 else "_"
+        signals = ";".join([sig.pretty_print(document_tokens) for sig in self.signals]) if len(self.signals) > 0 else "_"
         return "\t".join([self.id, self.text, str(self.dist),"_", "_", feats, self.dep_parent, self.dep_rel, "_", signals])
 
     def out_malt(self):
@@ -541,10 +570,7 @@ def get_tense(tok):
                     tense = "PresPerf"
     elif tok.pos in ["VB","VV","VH"]:
         if any([t.lemma == "will" for t in tok.children]):
-            if any([t.lemma == "have" for t in tok.children]):
-                tense = "FutPerf"
-            else:
-                tense = "Fut"
+            tense = "Fut"
         elif any([t.pos == "MD" for t in tok.children]):
             tense = "Modal"
     else:  # Check for copula
