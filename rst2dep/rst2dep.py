@@ -66,9 +66,16 @@ def seek_other_edu_child(nodes, source, exclude, block, algorithm="li"):
         children_to_search = [child for child in nodes[source].children if child not in nodes[exclude].children and child not in block]
         if len(children_to_search)>0:
             if int(exclude) < int(children_to_search[0]):
-                children_to_search.sort(key=lambda x: int(x))
+                if algorithm == "chain":
+                    children_to_search.sort(key=lambda x: nodes[x].left, reverse=True)
+                else:
+                    children_to_search.sort(key=lambda x: int(x))
             else:
                 children_to_search.sort(key=lambda x: int(x), reverse=True)
+        if algorithm == "chain" and nodes[source].kind == "multinuc":
+            left_sibling_id = [n for n in nodes if nodes[n].right == nodes[exclude].left - 1 and nodes[n].parent == nodes[exclude].parent]
+            if len(left_sibling_id) > 0:
+                left_sibling_id = left_sibling_id[0]
         for child_id in children_to_search:
             # Found an EDU child which is not the original caller
             if nodes[child_id].kind == "edu" and child_id != exclude and (nodes[source].kind != "span" or nodes[child_id].relname == "span") and \
@@ -93,9 +100,10 @@ def seek_other_edu_child(nodes, source, exclude, block, algorithm="li"):
                             if candidate is not None:
                                 return candidate
                     elif algorithm == "chain":  # In chain conversion, consider next multinuc child, which should already be sorted
-                        candidate = seek_other_edu_child(nodes, child_id, exclude, block, algorithm=algorithm)
-                        if candidate is not None:
-                            return candidate
+                        if child_id == left_sibling_id or source != nodes[exclude].parent:
+                            candidate = seek_other_edu_child(nodes, child_id, exclude, block, algorithm=algorithm)
+                            if candidate is not None:
+                                return candidate
                     elif algorithm == "hirao":  # TODO: Implement Hirao et al. conversion
                         raise NotImplementedError("Hirao et al. conversion not yet implemented")
     return None
