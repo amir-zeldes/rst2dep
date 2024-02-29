@@ -21,18 +21,21 @@ You can also download the scripts and manually run scripts (rst2dep.py, dep2rst.
 ## Usage
 
 ```
-usage: rst2dep.py [-h] [-c ROOT] [-p] [-a {li,chain,hirao}] [-s] infiles
+usage: python -m rst2dep [-h] [-c ROOT] [-p] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles
 
 positional arguments:
   infiles               file name or glob pattern, e.g. *.rs3
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
   -c ROOT, --corpus_root ROOT
-                        optional: path to corpus root folder containing a
-                        directory dep/ and a directory xml/ containing
-                        additional corpus formats
+                        optional: path to corpus root folder containing a directory dep/ and a directory xml/ containing additional corpus formats
   -p, --print           print output instead of serializing to a file
+  -f {rsd,conllu,rs3,rs4}, --format {rsd,conllu,rs3,rs4}
+                        input format
+  -d {ltr,rtl,dist}, --depth {ltr,rtl,dist}
+                        how to order depth
+  -r, --rels            use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data
   -a {li,chain,hirao}, --algorithm {li,chain,hirao}
                         dependency head algorithm (default: li)
   -s, --same_unit       retain same-unit multinucs in hirao algorithm

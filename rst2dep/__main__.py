@@ -13,7 +13,8 @@ def run_conversion():
     parser.add_argument("-f", "--format", choices=["rsd", "conllu", "rs3", "rs4"], default="rs3", help="input format")
     parser.add_argument("-d", "--depth", choices=["ltr", "rtl", "dist"], default="dist", help="how to order depth")
     parser.add_argument("-r", "--rels", action="store_true", help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
-    parser.add_argument("-a","--algorithm",choices=["li","chain"],help="dependency head algorithm (default: li)",default="li")
+    parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
+    parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm")
 
     options = parser.parse_args()
 
@@ -31,7 +32,7 @@ def run_conversion():
         for file_ in files:
             sys.stderr.write("Processing " + os.path.basename(file_) + "\n")
 
-            output = make_rsd(file_, options.root, algorithm=options.algorithm)
+            output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit)
             if options.prnt:
                 print(output)
             else:
