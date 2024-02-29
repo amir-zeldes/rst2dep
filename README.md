@@ -35,7 +35,7 @@ options:
   -p, --print           print output instead of serializing to a file
   -a {li,chain,hirao}, --algorithm {li,chain,hirao}
                         dependency head algorithm (default: li)
-  -s, --same_unit       retain use same-unit multinucs in hirao algorithm
+  -s, --same_unit       retain same-unit multinucs in hirao algorithm
 ```
 
 If you have installed the library you can run the converter directly on the commandline with the options you want like this:

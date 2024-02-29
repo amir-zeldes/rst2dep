@@ -352,7 +352,7 @@ if __name__ == "__main__":
                                                            "a directory xml/ containing additional corpus formats")
     parser.add_argument("-p","--print",dest="prnt",action="store_true",help="print output instead of serializing to a file")
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
-    parser.add_argument("-s","--same_unit",action="store_true",help="retain use same-unit multinucs in hirao algorithm")
+    parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm")
 
     options = parser.parse_args()
 
