@@ -20,7 +20,7 @@ GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"int
           "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",}
 
 
-def find_dep_head(nodes, source, exclude, block, initial_deprel, algorithm="li"):
+def find_dep_head(nodes, source, exclude, block, initial_deprel, algorithm="li", keep_same_unit=False):
     parent = nodes[source].parent
     if parent != "0":
         if nodes[parent].kind == "multinuc":
@@ -33,7 +33,7 @@ def find_dep_head(nodes, source, exclude, block, initial_deprel, algorithm="li")
         for child in nodes[source].children:
             if nodes[child].kind == "edu":
                 block.append(child)
-    candidate = seek_other_edu_child(nodes, nodes[source].parent, exclude, block, initial_deprel, algorithm=algorithm)
+    candidate = seek_other_edu_child(nodes, nodes[source].parent, exclude, block, initial_deprel, algorithm=algorithm, keep_same_unit=keep_same_unit)
     if candidate is not None:
         return candidate
     else:
@@ -42,10 +42,10 @@ def find_dep_head(nodes, source, exclude, block, initial_deprel, algorithm="li")
         else:
             if parent not in nodes:
                 raise IOError("Node with id " + source + " has parent id " + parent + " which is not listed\n")
-            return find_dep_head(nodes, parent, exclude, block, initial_deprel, algorithm=algorithm)
+            return find_dep_head(nodes, parent, exclude, block, initial_deprel, algorithm=algorithm, keep_same_unit=keep_same_unit)
 
 
-def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorithm="li"):
+def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorithm="li", keep_same_unit=False):
     """
     Recursive function to find some child of a node which is an EDU and does not have the excluded ID
 
@@ -58,6 +58,8 @@ def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorith
     :return: the found child ID or None if none match
     """
 
+    #if nodes[source].left == 43:
+    #    a=4
     if source == "0":
         return None
     else:
@@ -89,15 +91,15 @@ def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorith
                 # If it's a span, check below it, following only span relation paths
                 if nodes[source].kind == "span":
                     if nodes[child_id].relname == "span":
-                        candidate = seek_other_edu_child(nodes, child_id, exclude, block, initial_deprel, algorithm=algorithm)
+                        candidate = seek_other_edu_child(nodes, child_id, exclude, block, initial_deprel, algorithm=algorithm, keep_same_unit=keep_same_unit)
                         if candidate is not None:
                             return candidate
                 # If it's a multinuc...
                 elif nodes[source].kind == "multinuc":
-                    if algorithm in ["li","hirao"] or initial_deprel.endswith("_r"):
+                    if algorithm in ["li","hirao"] or initial_deprel.endswith("_r") or (keep_same_unit and "sameunit" in nodes[child_id].relname.lower().replace("_","").replace("-","")):
                         # In Li et al. conversion, only consider the left most child as representing the multinuc topologically
                         if child_id == nodes[source].leftmost_child:
-                            candidate = seek_other_edu_child(nodes, child_id, exclude, block, initial_deprel, algorithm=algorithm)
+                            candidate = seek_other_edu_child(nodes, child_id, exclude, block, initial_deprel, algorithm=algorithm, keep_same_unit=keep_same_unit)
                             if candidate is not None:
                                 return candidate
                     elif algorithm == "chain":  # In chain conversion, consider next multinuc child, which should already be sorted
@@ -105,7 +107,7 @@ def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorith
                             # Do not allow traversing against the direction of a satellite relation
                             continue
                         if child_id == left_sibling_id or source != nodes[exclude].parent:
-                            candidate = seek_other_edu_child(nodes, child_id, exclude, block, initial_deprel, algorithm=algorithm)
+                            candidate = seek_other_edu_child(nodes, child_id, exclude, block, initial_deprel, algorithm=algorithm, keep_same_unit=keep_same_unit)
                             if candidate is not None:
                                 return candidate
     return None
@@ -253,7 +255,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     for nid in nodes:
         node = nodes[nid]
-        dep_parent = find_dep_head(nodes, nid, nid, [], node.dep_rel, algorithm=algorithm)
+        dep_parent = find_dep_head(nodes, nid, nid, [], node.dep_rel, algorithm=algorithm, keep_same_unit=keep_same_unit)
         if dep_parent is None:
             # This is the root
             dep_parent = "0"
@@ -352,7 +354,7 @@ if __name__ == "__main__":
                                                            "a directory xml/ containing additional corpus formats")
     parser.add_argument("-p","--print",dest="prnt",action="store_true",help="print output instead of serializing to a file")
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
-    parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm")
+    parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain")
 
     options = parser.parse_args()
 

@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import sys, os, io
 
 def run_conversion():
-    parser = ArgumentParser(usage="python -m rst2dep [-h] [-c ROOT] [-p] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles")
+    parser = ArgumentParser(usage="python -m rst2dep [-h] [-c ROOT] [-p] [-s] [-a {li,hirao,chain}] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles")
     parser.add_argument("infiles", action="store", help="file name or glob pattern, e.g. *.rs3")
     parser.add_argument("-c", "--corpus_root", action="store", dest="root", default="",
                         help="optional: path to corpus root folder containing a directory dep/ and \n" +
@@ -14,7 +14,7 @@ def run_conversion():
     parser.add_argument("-d", "--depth", choices=["ltr", "rtl", "dist"], default="dist", help="how to order depth")
     parser.add_argument("-r", "--rels", action="store_true", help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
-    parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm")
+    parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain")
 
     options = parser.parse_args()
 
@@ -58,6 +58,7 @@ def run_conversion():
             else:
                 with open("output" + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
                     f.write(output)
+
 
 if __name__ == "__main__":
     run_conversion()

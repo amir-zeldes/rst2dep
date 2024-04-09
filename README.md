@@ -21,7 +21,7 @@ You can also download the scripts and manually run scripts (rst2dep.py, dep2rst.
 ## Usage
 
 ```
-usage: python -m rst2dep [-h] [-c ROOT] [-p] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles
+usage: python -m rst2dep [-h] [-c ROOT] [-p] [-s] [-a {li,chain,hirao}] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles
 
 positional arguments:
   infiles               file name or glob pattern, e.g. *.rs3
@@ -38,7 +38,7 @@ optional arguments:
   -r, --rels            use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data
   -a {li,chain,hirao}, --algorithm {li,chain,hirao}
                         dependency head algorithm (default: li)
-  -s, --same_unit       retain same-unit multinucs in hirao algorithm
+  -s, --same_unit       retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain
 ```
 
 If you have installed the library you can run the converter directly on the commandline with the options you want like this:
@@ -69,7 +69,7 @@ More details on the conversions and options are given below.
 
 The default conversion follows Li et al.'s (2013) convention of taking the left-most child of multinuclear relations as the head child governed by the relation applied to the whole multinuc, and attaching each subsequent multinuclear child to the first child using the multinuclear relation; thus if a contrast multinuc with units [2-3] is an elaboration on unit [1], the child [2] will become an elaboration dependent of [1], and [3] will become a contrast dependent of child [2]. An alternative algorithm implementing a chain conversion where multinuc children become dependents of their most recent sibling, instead of the leftmost sibling, is also available (use `--algorithm=chain`), as is the Hirao et al. (2014) algorithm (`--algorithm=hirao`), which attaches all multinuc children to the parent of the multinuc, using the relation of the multinuc as a whole. 
 
-For the Hirao et al. algorithm note that no multinuclear relations will be retained in the output, since they will be recursively replaced with whatever satellite relation governs their parent; also note that this means that there could be multiple ROOT nodes (all multinuc children of the document root), and  "same-unit" relations will be destroyed in the same manner. To exceptionally keep same-unit multinucs in the Hirao et al. conversion, use the option `--same_unit`.
+For the Hirao et al. algorithm note that no multinuclear relations will be retained in the output, since they will be recursively replaced with whatever satellite relation governs their parent; also note that this means that there could be multiple ROOT nodes (all multinuc children of the document root), and  "same-unit" relations will be destroyed in the same manner. To exceptionally keep same-unit multinucs in the Hirao et al. conversion, use the option `--same_unit`. The same option can be used in the Chain algorithm to exceptionally convert "same-unit" relations according to the Li et al. algorithm (i.e. same-unit children all attach to the leftmost child of the same-unit multinuclear node, but satellites of all other multinuclear node types attach in a chain to the most recent multinuclear child).
 
 By convention, multinuclear relations are converted with relation names ending in `_m`, while satellite RST relations are converted with names ending in `_r`. The original nesting depth is ignored in the conversion, but attachment point height for each dependent is retained in the third column of the output file, allowing deterministic reconstruction of the constituent tree using dep2rst, assuming a projective, hierarchically ordered tree with the Li et al. algorithm (other algorithms are not guaranteed to be reversible). Conversion of non-projective .rs3 constituent trees to dependencies is also supported, but cannot be reversed currently.
 
