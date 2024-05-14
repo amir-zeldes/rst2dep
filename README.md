@@ -39,6 +39,7 @@ optional arguments:
   -a {li,chain,hirao}, --algorithm {li,chain,hirao}
                         dependency head algorithm (default: li)
   -s, --same_unit       retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain
+  -n, --node_ids        output constituent node IDs in rsd dependency format
 ```
 
 If you have installed the library you can run the converter directly on the commandline with the options you want like this:

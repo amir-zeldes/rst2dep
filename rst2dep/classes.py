@@ -94,7 +94,7 @@ class NODE:
             token_lines.append("|||".join([tok.id,tok.text,tok.lemma,tok.pos,tok.pos,tok.morph,tok.head,tok.func,"_","_"]))
         self.parse = "///".join(token_lines)
 
-    def out_conll(self,feats=False,document_tokens=None):
+    def out_conll(self,feats=False,document_tokens=None, output_const_nid=False):
         self.rebuild_parse()
         head_word = "_"
         if len(self.tokens) == 0:  # No token information
@@ -144,9 +144,10 @@ class NODE:
                 feats = "_"
         else:
             feats = "_"
-
+        top_nid = self.top_nid if output_const_nid else "_"
         signals = ";".join([sig.pretty_print(document_tokens) for sig in self.signals]) if len(self.signals) > 0 else "_"
-        return "\t".join([self.id, self.text, str(self.dist),"_", "_", feats, self.dep_parent, self.dep_rel, "_", signals])
+
+        return "\t".join([self.id, self.text, str(self.dist), top_nid , "_", feats, self.dep_parent, self.dep_rel, "_", signals])
 
     def out_malt(self):
         first = self.tokens[0].lemma

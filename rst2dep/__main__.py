@@ -15,6 +15,7 @@ def run_conversion():
     parser.add_argument("-r", "--rels", action="store_true", help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
     parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain")
+    parser.add_argument("-n","--node_ids",action="store_true",help="output constituent node IDs in rsd dependency format")
 
     options = parser.parse_args()
 
@@ -32,7 +33,7 @@ def run_conversion():
         for file_ in files:
             sys.stderr.write("Processing " + os.path.basename(file_) + "\n")
 
-            output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit)
+            output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit, output_const_nid=options.node_ids)
             if options.prnt:
                 print(output)
             else:

@@ -58,8 +58,6 @@ def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorith
     :return: the found child ID or None if none match
     """
 
-    #if nodes[source].left == 43:
-    #    a=4
     if source == "0":
         return None
     else:
@@ -143,7 +141,7 @@ def get_distance(node, parent, nodes):
 
 def get_nonspan_rel(nodes,node):
     if node.parent == "0":  # Reached the root
-        return "ROOT"
+        return "ROOT_" + node.id
     elif nodes[node.parent].kind == "multinuc" and nodes[node.parent].leftmost_child == node.id:
         return get_nonspan_rel(nodes, nodes[node.parent])
     elif nodes[node.parent].kind == "multinuc" and nodes[node.parent].leftmost_child != node.id:
@@ -151,7 +149,7 @@ def get_nonspan_rel(nodes,node):
     elif nodes[node.parent].relname != "span":
         grandparent = nodes[node.parent].parent
         if grandparent == "0":
-            return "ROOT"
+            return "ROOT_" + node.id
         elif not (nodes[grandparent].kind == "multinuc" and nodes[node.parent].left == nodes[grandparent].left):
             return nodes[node.parent]#.relname
         else:
@@ -163,7 +161,21 @@ def get_nonspan_rel(nodes,node):
             return get_nonspan_rel(nodes,nodes[node.parent])
 
 
-def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll", algorithm="li", keep_same_unit=False):
+def make_rsd(rstfile, xml_dep_root="", as_text=False, docname=None, out_mode="conll", algorithm="li", keep_same_unit=False, output_const_nid=False):
+    """
+    Convert an RST tree to a dependency representation
+
+    :param rstfile: path to an .rs3 or .rs4 file, or a string containing the RST tree if as_text is True
+    :param xml_dep_root: directory containing GUM-style XML files for additional features (use "" if not available)
+    :param as_text: whether rstfile is a string containing the RST tree or a file path
+    :param docname: optional document name to use for output file name
+    :param out_mode: output format, one of {conll,malt}
+    :param algorithm: the algorithm to use for dependency head selection, one of {li,chain,hirao}
+    :param keep_same_unit: if True, retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain
+    :param output_const_nid: use the fourth column in the output to store the constituent tree original node ID for each relation
+    :return: a string containing the dependency representation if as_text is True, otherwise writes to a file
+    """
+
     nodes = read_rst(rstfile,{},as_text=as_text)
 
     text = " ".join([nodes[nid].text for nid in nodes if nodes[nid].kind=="edu"])
@@ -242,14 +254,21 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
         node = nodes[nid]
         new_rel = node.relname
         sigs = []
+        top_nid = nid
         if node.parent == "0":
             new_rel = "ROOT"
         elif node.relname == "span" or (nodes[node.parent].kind == "multinuc" and nodes[node.parent].leftmost_child == nid):
-            new_rel = get_nonspan_rel(nodes,node)
+            new_rel = get_nonspan_rel(nodes, node)
+            if isinstance(new_rel,str):
+                top_nid = new_rel.split("_")[1]
+                new_rel = "ROOT"
+            else:
+                top_nid = new_rel.id
             if new_rel != "ROOT":
                 sigs = new_rel.signals
                 new_rel = new_rel.relname
         node.dep_rel = new_rel
+        node.top_nid = top_nid
         if len(sigs) > 0:
             node.signals = sigs
 
@@ -279,7 +298,6 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     # Get head EDU and height per node
     node2head_edu = {}
-    node2height = {}
     for edu in edus:
         edu.height = 0
         node = edu
@@ -314,12 +332,13 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
 
     for node in out_graph:
         if out_mode == "conll":
-            output.append(node.out_conll(feats=feats,document_tokens=document_tokens))
+            output.append(node.out_conll(feats=feats,document_tokens=document_tokens, output_const_nid=output_const_nid))
         else:
             output.append(node.out_malt())
 
     # Insert secedges if any
     src2secedges = collections.defaultdict(set)
+    secedge_mapping = {}
     for secedge in secedges:
         dep_src = node2head_edu[nodes[secedge.source].id]
         dep_trg = node2head_edu[nodes[secedge.target].id]
@@ -330,6 +349,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
             signals.append(sig.pretty_print(tokens=document_tokens))
         signals = ";".join(sorted(signals)) if len(signals)>0 else "_"
         src2secedges[dep_src].add(":".join([dep_trg,secedge.relname,src_dist,trg_dist,signals]))
+        secedge_mapping[dep_src + "-" + dep_trg] = secedge.id
 
     temp = []
     for i, line in enumerate(output):
@@ -337,6 +357,14 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
             fields = line.split("\t")
             secstr = "|".join(src2secedges[str(i+1)])
             fields[8] = secstr
+            if output_const_nid:
+                mapping = []
+                for sec in src2secedges[str(i+1)]:
+                    src = fields[0]
+                    trg = sec.split(":")[0]
+                    if src + "-" + trg in secedge_mapping:
+                       mapping.append(src + "-" + trg + ":" + secedge_mapping[src + "-" + trg])
+                    fields[4] = "|".join(mapping)
             line = "\t".join(fields)
         temp.append(line)
 
@@ -355,6 +383,7 @@ if __name__ == "__main__":
     parser.add_argument("-p","--print",dest="prnt",action="store_true",help="print output instead of serializing to a file")
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
     parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain")
+    parser.add_argument("-n","--node_ids",action="store_true",help="output constituent node IDs in rsd dependency format")
 
     options = parser.parse_args()
 
@@ -367,7 +396,7 @@ if __name__ == "__main__":
         files = [inpath]
 
     for file_ in files:
-        output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit)
+        output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit, output_const_nid=options.node_ids)
         if options.prnt:
             print(output)
         else:
