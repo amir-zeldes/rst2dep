@@ -298,23 +298,34 @@ def make_rsd(rstfile, xml_dep_root="", as_text=False, docname=None, out_mode="co
 
     # Get head EDU and height per node
     node2head_edu = {}
+    target_node2head_edu = {}  # Only distinct for chain algorithm
     for edu in edus:
         edu.height = 0
         node = edu
         edu_id = edu.id
-        node2head_edu[node.id] = edu_id
+        target_node2head_edu[node.id] = node2head_edu[node.id] = edu_id
         while node.parent != "0":
             this_height = node.height + 1
+            span_parent = node.relname == "span"
+            multinuc_parent = nodes[node.parent].kind == "multinuc" and (nodes[node.parent].leftmost_child == node.id or (node.relname.endswith("_m") and not node.relname.startswith("same")))
             node = nodes[node.parent]
             if node.kind == "edu":
                 edu_id = node.id
             if node.id not in node2head_edu:
-                node2head_edu[node.id] = edu_id
+                if span_parent or multinuc_parent:
+                    target_node2head_edu[node.id] = node2head_edu[node.id] = edu_id
                 node.height = this_height
             else:
                 if int(edu_id) < int(node2head_edu[node.id]):  # Prefer left most child as head
-                    node2head_edu[node.id] = edu_id
+                    if span_parent or multinuc_parent:
+                        node2head_edu[node.id] = edu_id
                     node.height = this_height
+                if int(edu_id) > int(target_node2head_edu[node.id]):  # Prefer right most child as head for chain target
+                    if span_parent or multinuc_parent:
+                        target_node2head_edu[node.id] = edu_id
+
+            if not span_parent and not multinuc_parent:
+                break  # A satellite relation has been traversed, stop looking for nodes headed by this
 
     # Get height distance from dependency parent to child's attachment point in the phrase structure (number of spans)
     for nid in nodes:
@@ -341,7 +352,10 @@ def make_rsd(rstfile, xml_dep_root="", as_text=False, docname=None, out_mode="co
     secedge_mapping = {}
     for secedge in secedges:
         dep_src = node2head_edu[nodes[secedge.source].id]
-        dep_trg = node2head_edu[nodes[secedge.target].id]
+        if algorithm == "chain":
+            dep_trg = target_node2head_edu[nodes[secedge.target].id]
+        else:
+            dep_trg = node2head_edu[nodes[secedge.target].id]
         src_dist = str(nodes[secedge.source].height)
         trg_dist = str(nodes[secedge.target].height)
         signals = []
