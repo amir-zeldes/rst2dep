@@ -16,6 +16,7 @@ stanza_tokenizer_no_ssplit = stanza.Pipeline('en', processors='tokenize', tokeni
 
 rel_mapping = defaultdict(dict)
 rel_mapping["eng.rst.rstdt"] = {"attribution":"attribution","attribution-e":"attribution","attribution-n":"attribution","attribution-negative":"attribution","background":"background","background-e":"background","circumstance":"background","circumstance-e":"background","cause":"cause","cause-result":"cause","result":"cause","result-e":"cause","consequence":"cause","consequence-n-e":"cause","consequence-n":"cause","consequence-s-e":"cause","consequence-s":"cause","comparison":"comparison","comparison-e":"comparison","preference":"comparison","preference-e":"comparison","analogy":"comparison","analogy-e":"comparison","proportion":"comparison","condition":"condition","condition-e":"condition","hypothetical":"condition","contingency":"condition","otherwise":"condition","contrast":"contrast","concession":"contrast","concession-e":"contrast","antithesis":"contrast","antithesis-e":"contrast","elaboration-additional":"elaboration","elaboration-additional-e":"elaboration","elaboration-general-specific-e":"elaboration","elaboration-general-specific":"elaboration","elaboration-part-whole":"elaboration","elaboration-part-whole-e":"elaboration","elaboration-process-step":"elaboration","elaboration-process-step-e":"elaboration","elaboration-object-attribute-e":"elaboration","elaboration-object-attribute":"elaboration","elaboration-set-member":"elaboration","elaboration-set-member-e":"elaboration","example":"elaboration","example-e":"elaboration","definition":"elaboration","definition-e":"elaboration","purpose":"enablement","purpose-e":"enablement","enablement":"enablement","enablement-e":"enablement","evaluation":"evaluation","evaluation-n":"evaluation","evaluation-s-e":"evaluation","evaluation-s":"evaluation","interpretation-n":"evaluation","interpretation-s-e":"evaluation","interpretation-s":"evaluation","interpretation":"evaluation","conclusion":"evaluation","comment":"evaluation","comment-e":"evaluation","evidence":"explanation","evidence-e":"explanation","explanation-argumentative":"explanation","explanation-argumentative-e":"explanation","reason":"explanation","reason-e":"explanation","list":"joint","disjunction":"joint","manner":"manner-means","manner-e":"manner-means","means":"manner-means","means-e":"manner-means","problem-solution":"topic-comment","problem-solution-n":"topic-comment","problem-solution-s":"topic-comment","question-answer":"topic-comment","question-answer-n":"topic-comment","question-answer-s":"topic-comment","statement-response":"topic-comment","statement-response-n":"topic-comment","statement-response-s":"topic-comment","topic-comment":"topic-comment","comment-topic":"topic-comment","rhetorical-question":"topic-comment","summary":"summary","summary-n":"summary","summary-s":"summary","restatement":"summary","restatement-e":"summary","temporal-before":"temporal","temporal-before-e":"temporal","temporal-after":"temporal","temporal-after-e":"temporal","temporal-same-time":"temporal","temporal-same-time-e":"temporal","sequence":"temporal","inverted-sequence":"temporal","topic-shift":"topic-change","topic-drift":"topic-change","textualorganization":"textual-organization"}
+ellipsis_marker = "<*>"
 
 def format_range(tok_ids):
 	# Takes a list of IDs and returns formatted string:
@@ -479,8 +480,8 @@ if __name__ == "__main__":
 	options = parser.parse_args()
 	inpath = options.infiles
 
-    # if I load the stanza models here with a choice of language parameter, I won't be able to import the functions and automatically get the models, but 
-    # I don't want them in all of the individual functions because then they'll be loaded all the time
+	# if I load the stanza models here with a choice of language parameter, I won't be able to import the functions and automatically get the models, but 
+	# I don't want them in all of the individual functions because then they'll be loaded all the time
 	#stanza_language_code = options.stanza_language_code
 	#stanza.download(stanza_language_code) # download model
 	#stanza_tokenizer = stanza.Pipeline(stanza_language_code, processors='tokenize')
@@ -499,6 +500,7 @@ if __name__ == "__main__":
 
 	for file_ in files:
 		input_docname = file_.split("/")[-1].split(".")[0]
+		print("Processing: " + input_docname)
 		rst = open(file_).read()
 		rels, tok, conllu = "", "", ""
 		if options.rels:
@@ -529,4 +531,4 @@ if __name__ == "__main__":
 				with open(conllu_name, 'w', encoding="utf8", newline="\n") as f:
 					f.write(conllu)
 
-    # current issues: where to load stanza models, max recurrsion in make_rsd function for some files????
+	# current issues: where to load stanza models, max recurrsion in make_rsd function for some files????

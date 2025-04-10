@@ -302,7 +302,7 @@ def read_rst(data, rel_hash, as_text=False):
             if not relname.endswith("_r") and len(relname) > 0:
                 relname = relname + "_r"
         edu_id = segment.attributes["id"].value
-        contents = segment.childNodes[0].data.strip()
+        contents =  re.sub(r' +', ' ', segment.childNodes[0].data.strip().replace("\n", " ").replace("\t", " "))
         nodes.append(
             [str(ordered_id[edu_id]), id_counter, id_counter, str(ordered_id[parent]), 0, "edu", contents, relname])
 
