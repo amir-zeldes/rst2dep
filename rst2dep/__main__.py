@@ -5,8 +5,10 @@ from argparse import ArgumentParser
 import sys, os, io
 
 def run_conversion():
-    parser = ArgumentParser(usage="python -m rst2dep [-h] [-c ROOT] [-p] [-s] [-a {li,hirao,chain}] [-f {rsd,conllu,rs3,rs4}] [-o {rsd,conllu,tok,rels}] [-d {ltr,rtl,dist}] [-r] infiles")
+    parser = ArgumentParser(usage="python -m rst2dep [-h] [-l] [-c ROOT] [-p] [-s] [-a {li,hirao,chain}] [-f {rsd,conllu,rs3,rs4}] [-o {rsd,conllu,tok,rels}] [-d {ltr,rtl,dist}] [-r] infiles")
     parser.add_argument("infiles", action="store", help="file name or glob pattern, e.g. *.rs3")
+    parser.add_argument("-l", "--language_code", action="store", default="en",
+                        help="stanza language code for language of data being processed")
     parser.add_argument("-c", "--corpus_root", action="store", dest="root", default="",
                         help="optional: path to corpus root folder containing a directory dep/ and \n" +
                              "a directory xml/ containing additional corpus formats")
@@ -38,11 +40,11 @@ def run_conversion():
             rst = open(file_).read()
 
             if options.output_format == "rels":
-                output = rst2rels(rst, docname=os.path.basename(file_).split(".")[0])
+                output = rst2rels(rst, docname=os.path.basename(file_).split(".")[0], lang_code=options.language_code)
             elif options.output_format == "tok":
-                output = rst2tok(rst)
+                output = rst2tok(rst, lang_code=options.language_code)
             elif options.output_format == "conllu":
-                output = rst2conllu(rst)
+                output = rst2conllu(rst, lang_code=options.language_code)
             else:
                 output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit, output_const_nid=options.node_ids)
             if options.prnt:

@@ -7,12 +7,10 @@ from collections import defaultdict
 from argparse import ArgumentParser
 import stanza
 import re
-import os
 
-stanza.download('en') # download English model
-stanza_tokenizer = stanza.Pipeline('en', processors='tokenize')
-nlp = stanza.Pipeline('en', tokenize_no_ssplit=True)
-stanza_tokenizer_no_ssplit = stanza.Pipeline('en', processors='tokenize', tokenize_no_ssplit=True)
+stanza_tokenizer = None
+nlp = None
+stanza_tokenizer_no_ssplit = None
 
 rel_mapping = defaultdict(dict)
 rel_mapping["eng.rst.rstdt"] = {"attribution":"attribution","attribution-e":"attribution","attribution-n":"attribution","attribution-negative":"attribution","background":"background","background-e":"background","circumstance":"background","circumstance-e":"background","cause":"cause","cause-result":"cause","result":"cause","result-e":"cause","consequence":"cause","consequence-n-e":"cause","consequence-n":"cause","consequence-s-e":"cause","consequence-s":"cause","comparison":"comparison","comparison-e":"comparison","preference":"comparison","preference-e":"comparison","analogy":"comparison","analogy-e":"comparison","proportion":"comparison","condition":"condition","condition-e":"condition","hypothetical":"condition","contingency":"condition","otherwise":"condition","contrast":"contrast","concession":"contrast","concession-e":"contrast","antithesis":"contrast","antithesis-e":"contrast","elaboration-additional":"elaboration","elaboration-additional-e":"elaboration","elaboration-general-specific-e":"elaboration","elaboration-general-specific":"elaboration","elaboration-part-whole":"elaboration","elaboration-part-whole-e":"elaboration","elaboration-process-step":"elaboration","elaboration-process-step-e":"elaboration","elaboration-object-attribute-e":"elaboration","elaboration-object-attribute":"elaboration","elaboration-set-member":"elaboration","elaboration-set-member-e":"elaboration","example":"elaboration","example-e":"elaboration","definition":"elaboration","definition-e":"elaboration","purpose":"enablement","purpose-e":"enablement","enablement":"enablement","enablement-e":"enablement","evaluation":"evaluation","evaluation-n":"evaluation","evaluation-s-e":"evaluation","evaluation-s":"evaluation","interpretation-n":"evaluation","interpretation-s-e":"evaluation","interpretation-s":"evaluation","interpretation":"evaluation","conclusion":"evaluation","comment":"evaluation","comment-e":"evaluation","evidence":"explanation","evidence-e":"explanation","explanation-argumentative":"explanation","explanation-argumentative-e":"explanation","reason":"explanation","reason-e":"explanation","list":"joint","disjunction":"joint","manner":"manner-means","manner-e":"manner-means","means":"manner-means","means-e":"manner-means","problem-solution":"topic-comment","problem-solution-n":"topic-comment","problem-solution-s":"topic-comment","question-answer":"topic-comment","question-answer-n":"topic-comment","question-answer-s":"topic-comment","statement-response":"topic-comment","statement-response-n":"topic-comment","statement-response-s":"topic-comment","topic-comment":"topic-comment","comment-topic":"topic-comment","rhetorical-question":"topic-comment","summary":"summary","summary-n":"summary","summary-s":"summary","restatement":"summary","restatement-e":"summary","temporal-before":"temporal","temporal-before-e":"temporal","temporal-after":"temporal","temporal-after-e":"temporal","temporal-same-time":"temporal","temporal-same-time-e":"temporal","sequence":"temporal","inverted-sequence":"temporal","topic-shift":"topic-change","topic-drift":"topic-change","textualorganization":"textual-organization"}
@@ -350,12 +348,11 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	return output
 
 
-def get_ssplit(rsd):
+def get_ssplit(rsd, lang_code="en"):
 
 	# Creates edu list and document string
 	edu_list = []
 	document_string = ""
-	rsd = re.sub(r'\n[^\d]', ' ', rsd) 
 	rsd_lines = rsd.split("\n")
 	for rsd_line in rsd_lines:
 		if "\t" in rsd_line:
@@ -366,11 +363,17 @@ def get_ssplit(rsd):
 	document_string = document_string[:-1]
 
 	# Use stanza to make the conllu from rs3/rsd
-	#stanza_tokenizer = stanza.Pipeline('en', processors='tokenize')
+	global stanza_tokenizer
+	if stanza_tokenizer is None:
+		try:
+			stanza_tokenizer = stanza.Pipeline(lang_code, processors='tokenize')
+		except:
+			stanza.download(lang_code)  # download model
+			stanza_tokenizer = stanza.Pipeline(lang_code, processors='tokenize')
 
 	tokenized_document = stanza_tokenizer(document_string)
 
-	# Check that sentence splits doe not split any edus
+	# Check that sentence splits do not split any edus
 	merged_sentences = []
 	i = 0
 	while i < len(tokenized_document.sentences):
@@ -392,14 +395,16 @@ def get_ssplit(rsd):
 	return merged_sentences, edu_list
 
 
-def rst2conllu(rst):
+def rst2conllu(rst, lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
-	rsd_from_rst = re.sub(r'\n[^\d]', ' ', rsd_from_rst) 
 
-	merged_sentences, _ = get_ssplit(rsd_from_rst)
+	merged_sentences, _ = get_ssplit(rsd_from_rst, lang_code=lang_code)
 
-	#nlp = stanza.Pipeline('en', tokenize_no_ssplit=True)
+	global nlp
+	if nlp is None:
+		nlp = stanza.Pipeline(lang_code, tokenize_no_ssplit=True)
+
 	proccessed_document = nlp(merged_sentences)
 
 	# returnable object
@@ -420,14 +425,16 @@ def rst2conllu(rst):
 	return conll_str
 
 
-def rst2tok(rst):
+def rst2tok(rst, lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
-	rsd_from_rst = re.sub(r'\n[^\d]', ' ', rsd_from_rst) 
 
-	merged_sentences, edu_list = get_ssplit(rsd_from_rst)
+	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
 
-	#stanza_tokenizer_no_ssplit = stanza.Pipeline('en', processors='tokenize', tokenize_no_ssplit=True)
+	global stanza_tokenizer_no_ssplit
+	if stanza_tokenizer_no_ssplit is None:
+		stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize',
+													 tokenize_no_ssplit=True)
 	proccessed_document = stanza_tokenizer_no_ssplit(merged_sentences)
 
 	# make the tok format
@@ -457,11 +464,10 @@ def rst2tok(rst):
 	return tok_str
 
 
-def rst2rels(rst, docname="document"):
+def rst2rels(rst, docname="document", lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
-	rsd_from_rst = re.sub(r'\n[^\d]', ' ', rsd_from_rst) 
-	conll_str = rst2conllu(rst)
+	conll_str = rst2conllu(rst, lang_code=lang_code)
 	rels_format = make_rels(rsd_from_rst, conll_str, docname)
 	rels_str = "\n".join(rels_format) # rels format string
 
@@ -472,25 +478,13 @@ if __name__ == "__main__":
 	desc = "Script to convert Rhetorical Structure Theory trees \n in the .rs3 format to the disrpt .rels format, .tok format, and .conllu format.\nExample usage:\n\n" + "python rst2rels.py <INFILES>"
 	parser = ArgumentParser(description=desc)
 	parser.add_argument("infiles",action="store",help="file name or glob pattern, e.g. *.rs3")
-	#parser.add_argument("-s", "--stanza_language_code", action="store", default="en", help="stanza language code for language of data being processed")
+	parser.add_argument("-l", "--language_code", action="store", default="en", help="stanza language code for language of data being processed")
 	parser.add_argument("-p","--print",dest="prnt",action="store_true",help="print output instead of serializing to a file")
 	parser.add_argument("-r","--rels",action="store_true",help="generate disrpt .rels format")
 	parser.add_argument("-t","--tok",action="store_true",help="generate .tok format")
 	parser.add_argument("-c","--conllu",action="store_true",help="generate .conllu format")
 	options = parser.parse_args()
 	inpath = options.infiles
-
-	# if I load the stanza models here with a choice of language parameter, I won't be able to import the functions and automatically get the models, but 
-	# I don't want them in all of the individual functions because then they'll be loaded all the time
-	#stanza_language_code = options.stanza_language_code
-	#stanza.download(stanza_language_code) # download model
-	#stanza_tokenizer = stanza.Pipeline(stanza_language_code, processors='tokenize')
-	#nlp = stanza.Pipeline(stanza_language_code, tokenize_no_ssplit=True)
-	#stanza_tokenizer_no_ssplit = stanza.Pipeline(stanza_language_code, processors='tokenize', tokenize_no_ssplit=True)
-
-	#rel_mapping = defaultdict(dict)
-	#rel_mapping["eng.rst.rstdt"] = {"attribution":"attribution","attribution-e":"attribution","attribution-n":"attribution","attribution-negative":"attribution","background":"background","background-e":"background","circumstance":"background","circumstance-e":"background","cause":"cause","cause-result":"cause","result":"cause","result-e":"cause","consequence":"cause","consequence-n-e":"cause","consequence-n":"cause","consequence-s-e":"cause","consequence-s":"cause","comparison":"comparison","comparison-e":"comparison","preference":"comparison","preference-e":"comparison","analogy":"comparison","analogy-e":"comparison","proportion":"comparison","condition":"condition","condition-e":"condition","hypothetical":"condition","contingency":"condition","otherwise":"condition","contrast":"contrast","concession":"contrast","concession-e":"contrast","antithesis":"contrast","antithesis-e":"contrast","elaboration-additional":"elaboration","elaboration-additional-e":"elaboration","elaboration-general-specific-e":"elaboration","elaboration-general-specific":"elaboration","elaboration-part-whole":"elaboration","elaboration-part-whole-e":"elaboration","elaboration-process-step":"elaboration","elaboration-process-step-e":"elaboration","elaboration-object-attribute-e":"elaboration","elaboration-object-attribute":"elaboration","elaboration-set-member":"elaboration","elaboration-set-member-e":"elaboration","example":"elaboration","example-e":"elaboration","definition":"elaboration","definition-e":"elaboration","purpose":"enablement","purpose-e":"enablement","enablement":"enablement","enablement-e":"enablement","evaluation":"evaluation","evaluation-n":"evaluation","evaluation-s-e":"evaluation","evaluation-s":"evaluation","interpretation-n":"evaluation","interpretation-s-e":"evaluation","interpretation-s":"evaluation","interpretation":"evaluation","conclusion":"evaluation","comment":"evaluation","comment-e":"evaluation","evidence":"explanation","evidence-e":"explanation","explanation-argumentative":"explanation","explanation-argumentative-e":"explanation","reason":"explanation","reason-e":"explanation","list":"joint","disjunction":"joint","manner":"manner-means","manner-e":"manner-means","means":"manner-means","means-e":"manner-means","problem-solution":"topic-comment","problem-solution-n":"topic-comment","problem-solution-s":"topic-comment","question-answer":"topic-comment","question-answer-n":"topic-comment","question-answer-s":"topic-comment","statement-response":"topic-comment","statement-response-n":"topic-comment","statement-response-s":"topic-comment","topic-comment":"topic-comment","comment-topic":"topic-comment","rhetorical-question":"topic-comment","summary":"summary","summary-n":"summary","summary-s":"summary","restatement":"summary","restatement-e":"summary","temporal-before":"temporal","temporal-before-e":"temporal","temporal-after":"temporal","temporal-after-e":"temporal","temporal-same-time":"temporal","temporal-same-time-e":"temporal","sequence":"temporal","inverted-sequence":"temporal","topic-shift":"topic-change","topic-drift":"topic-change","textualorganization":"textual-organization"}
-
 
 	if "*" in inpath:
 		from glob import glob
@@ -504,11 +498,11 @@ if __name__ == "__main__":
 		rst = open(file_).read()
 		rels, tok, conllu = "", "", ""
 		if options.rels:
-			rels = rst2rels(rst, docname=input_docname)
+			rels = rst2rels(rst, docname=input_docname, lang_code=options.language_code)
 		if options.tok:
-			tok = rst2tok(rst)
+			tok = rst2tok(rst, lang_code=options.language_code)
 		if options.conllu:
-			conllu = rst2conllu(rst)
+			conllu = rst2conllu(rst, lang_code=options.language_code)
 		
 		if options.prnt:
 			if options.rels:
@@ -530,5 +524,3 @@ if __name__ == "__main__":
 				conllu_name = file_.replace("rs3", "conllu").replace("rs4", "conllu")
 				with open(conllu_name, 'w', encoding="utf8", newline="\n") as f:
 					f.write(conllu)
-
-	# current issues: where to load stanza models, max recurrsion in make_rsd function for some files????
