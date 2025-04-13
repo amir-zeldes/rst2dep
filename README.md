@@ -21,18 +21,21 @@ You can also download the scripts and manually run scripts (rst2dep.py, dep2rst.
 ## Usage
 
 ```
-usage: python -m rst2dep [-h] [-c ROOT] [-p] [-s] [-a {li,chain,hirao}] [-f {rsd,conllu,rs3,rs4}] [-d {ltr,rtl,dist}] [-r] infiles
+usage: python -m rst2dep [-h] [-l] [-c ROOT] [-p] [-s] [-a {li,chain,hirao}] [-f {rsd,conllu,rs3,rs4}] [-o {rsd,conllu,tok,rels}] [-d {ltr,rtl,dist}] [-r] infiles
 
 positional arguments:
   infiles               file name or glob pattern, e.g. *.rs3
 
 optional arguments:
   -h, --help            show this help message and exit
+  -l, --language_code        stanza language code for language of data being processed
   -c ROOT, --corpus_root ROOT
                         optional: path to corpus root folder containing a directory dep/ and a directory xml/ containing additional corpus formats
   -p, --print           print output instead of serializing to a file
   -f {rsd,conllu,rs3,rs4}, --format {rsd,conllu,rs3,rs4}
                         input format
+  -o {rsd,conllu,tok,rels}, --output_format {rsd,conllu,tok,rels}
+                        output format (applies for rs3 or rs4 input)
   -d {ltr,rtl,dist}, --depth {ltr,rtl,dist}
                         how to order depth
   -r, --rels            use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data
