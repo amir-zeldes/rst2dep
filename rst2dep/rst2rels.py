@@ -399,29 +399,51 @@ def rst2conllu(rst, lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 
-	merged_sentences, _ = get_ssplit(rsd_from_rst, lang_code=lang_code)
+	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
 
 	global nlp
 	if nlp is None:
-		nlp = stanza.Pipeline(lang_code, tokenize_no_ssplit=True)
+		nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True)
 
 	proccessed_document = nlp(merged_sentences)
 
 	# returnable object
 	dicts = proccessed_document.to_dict()
+	for sent in dicts:
+		for token_dict in sent:
+			del token_dict["start_char"]
+			del token_dict["end_char"]
 	conll = CoNLL.convert_dict(dicts)
 
 	# make conll into string
 	sentence_strings = []
+	seg_begin = True
+	current_edu_index = 0
+	current_edu = ""
 	for sentence in conll:
 		token_lines = []
 		for token in sentence:
+			if "-" not in token[0]:
+				if seg_begin:
+					if token[9] == "_":
+						token[9] = "BeginSeg=Yes"
+					else:
+						token[9] += "|BeginSeg=Yes"
+					current_edu = re.sub(r'\s', "", edu_list[current_edu_index])
+					current_edu = current_edu[len(token[1]):]
+					seg_begin = False
+				else:
+					current_edu = current_edu[len(token[1]):]
+					if current_edu == "":
+						# if we've reached the end of the edu
+						seg_begin = True
+						current_edu_index += 1
 			token_line = "\t".join(token)
 			token_lines.append(token_line)
 		sentence_string = "\n".join(token_lines)
 		sentence_strings.append(sentence_string)
 	conll_str = "\n\n".join(sentence_strings) # conll format string
-
+	conll_str += "\n\n"
 	return conll_str
 
 
@@ -468,11 +490,10 @@ def rst2rels(rst, docname="document", lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 	conll_str = rst2conllu(rst, lang_code=lang_code)
-	rels_format = make_rels(rsd_from_rst, conll_str, docname)
+	rels_format = make_rels(rsd_from_rst, conll_str, docname, outmode="standoff_reltype")
 	rels_str = "\n".join(rels_format) # rels format string
 
 	return rels_str
-
 
 if __name__ == "__main__":
 	desc = "Script to convert Rhetorical Structure Theory trees \n in the .rs3 format to the disrpt .rels format, .tok format, and .conllu format.\nExample usage:\n\n" + "python rst2rels.py <INFILES>"
