@@ -428,7 +428,11 @@ def rst2conllu(rst, lang_code="en"):
 					if token[9] == "_":
 						token[9] = "BeginSeg=Yes"
 					else:
-						token[9] += "|BeginSeg=Yes"
+						# add BeginSeg=Yes alphabetically
+						misc_segments = token[9].split("|")
+						misc_segments.append("BeginSeg=Yes")
+						misc_segments.sort()
+						token[9] = "|".join(misc_segments)
 					current_edu = re.sub(r'\s', "", edu_list[current_edu_index])
 					current_edu = current_edu[len(token[1]):]
 					seg_begin = False
@@ -455,7 +459,7 @@ def rst2tok(rst, lang_code="en"):
 
 	global stanza_tokenizer_no_ssplit
 	if stanza_tokenizer_no_ssplit is None:
-		stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize',
+		stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize,mwt',
 													 tokenize_no_ssplit=True)
 	proccessed_document = stanza_tokenizer_no_ssplit(merged_sentences)
 
@@ -467,22 +471,24 @@ def rst2tok(rst, lang_code="en"):
 	token_index_count = 1
 	for sentence in proccessed_document.sentences:
 		for token in sentence.tokens:
-			if seg_begin:
-				tok_format.append(str(token_index_count) + "\t" + token.text +"\t_\t_\t_\t_\t_\t_\t_\tBeginSeg=Yes")
-				current_edu = re.sub(r'\s', "", edu_list[current_edu_index]) 
-				current_edu = current_edu[len(token.text):]
-				seg_begin = False
-			else:
-				tok_format.append(str(token_index_count) + "\t" + token.text +"\t_\t_\t_\t_\t_\t_\t_\t_")
-				current_edu = current_edu[len(token.text):]
-				if current_edu == "":
-				# if we've reached the end of the edu
-					seg_begin = True
-					current_edu_index += 1
-			token_index_count += 1
-
+			for word in token.words:
+				if type(word.id) is list:
+					# skip supertokens
+					continue
+				if seg_begin:
+					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\tBeginSeg=Yes")
+					current_edu = re.sub(r'\s', "", edu_list[current_edu_index])
+					current_edu = current_edu[len(word.text):]
+					seg_begin = False
+				else:
+					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\t_")
+					current_edu = current_edu[len(word.text):]
+					if current_edu == "":
+					# if we've reached the end of the edu
+						seg_begin = True
+						current_edu_index += 1
+				token_index_count += 1
 	tok_str = "\n".join(tok_format) # tok format string
-
 	return tok_str
 
 
