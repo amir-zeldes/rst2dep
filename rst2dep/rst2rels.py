@@ -489,6 +489,7 @@ def rst2tok(rst, lang_code="en"):
 						current_edu_index += 1
 				token_index_count += 1
 	tok_str = "\n".join(tok_format) # tok format string
+	tok_str += "\n\n"
 	return tok_str
 
 
