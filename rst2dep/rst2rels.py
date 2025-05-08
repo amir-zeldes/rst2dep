@@ -409,6 +409,7 @@ def get_ssplit(rsd, lang_code="en"):
 def rst2conllu(rst, lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
+	rsd_from_rst = filter_string(rsd_from_rst)
 
 	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
 
@@ -449,10 +450,10 @@ def rst2conllu(rst, lang_code="en"):
 					seg_begin = False
 				else:
 					current_edu = current_edu[len(token[1]):]
-					if current_edu == "":
-						# if we've reached the end of the edu
-						seg_begin = True
-						current_edu_index += 1
+				if current_edu == "":
+					# if we've reached the end of the edu
+					seg_begin = True
+					current_edu_index += 1
 			token_line = "\t".join(token)
 			token_lines.append(token_line)
 		sentence_string = "\n".join(token_lines)
@@ -465,6 +466,7 @@ def rst2conllu(rst, lang_code="en"):
 def rst2tok(rst, lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
+	rsd_from_rst = filter_string(rsd_from_rst)
 
 	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
 
@@ -507,11 +509,30 @@ def rst2tok(rst, lang_code="en"):
 def rst2rels(rst, docname="document", lang_code="en"):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
+	rsd_from_rst = filter_string(rsd_from_rst)
 	conll_str = rst2conllu(rst, lang_code=lang_code)
 	rels_format = make_rels(rsd_from_rst, conll_str, docname, outmode="standoff_reltype")
 	rels_str = "\n".join(rels_format) # rels format string
 
 	return rels_str
+
+
+def filter_string(string):
+	string = string.replace("", "\'")
+	string = string.replace("", "\"")
+	string = string.replace("", "\"")
+	string = string.replace("&quot;", "\"")
+	string = string.replace("&apos;", "\'")
+	string = string.replace("&lt;", "<")
+	string = string.replace("&gt;", ">")
+	string = string.replace("&amp;", "&")
+	string = string.replace("quot;", "\"")
+	string = string.replace("apos;", "\'")
+	string = string.replace("lt;", "<")
+	string = string.replace("gt;", ">")
+	string = string.replace("amp;", "&")
+	return string
+
 
 if __name__ == "__main__":
 	desc = "Script to convert Rhetorical Structure Theory trees \n in the .rs3 format to the disrpt .rels format, .tok format, and .conllu format.\nExample usage:\n\n" + "python rst2rels.py <INFILES>"
