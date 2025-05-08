@@ -86,7 +86,8 @@ def format_sent(arg1_sid, sents):
 
 
 def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedges=True, outmode="standoff",
-			  coarse_rels=False, dedup=True):
+			  coarse_rels=False, dedup=True, rsd_not_tokenized=True):
+	# rsd_not_tokenized=True requires that conll_str have BeginSeg=Yes in the misc column, otherwise rsd_str edus are assumed to be space tokenized
 	if outmode == "standoff":
 		header = ["doc", "unit1_toks", "unit2_toks", "unit1_txt", "unit2_txt", "s1_toks", "s2_toks", "unit1_sent",
 				  "unit2_sent", "dir", "orig_label", "label"]
@@ -110,6 +111,8 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	s_starts = {}
 	s_ends = {}
 	mwts = {}  # Track MWT internal tokens (excluding last)
+	edu_dict = {}
+	edu_count = 0
 
 	for sent in sents:
 		lines = sent.split("\n")
@@ -125,6 +128,10 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 						for i in range(length):
 							mwts[toknum+i] = True
 					continue
+				if "BeginSeg=Yes" in fields[9]:
+					edu_count += 1
+					edu_dict[edu_count] = []
+				edu_dict[edu_count].append(fields[1])
 				if fields[0] == "1":
 					s_starts[snum] = toknum
 				sent_map[toknum] = snum
@@ -147,7 +154,11 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 			edu_id = fields[0]
 			edu_parent = fields[6]
 			relname = fields[7].replace("_m","").replace("_r","")
-			text = fields[1].strip()
+			if rsd_not_tokenized:
+				text = " ".join(edu_dict[int(edu_id)])
+			else:
+				text = fields[1]
+			text = text.strip()
 			texts[edu_id] = text
 			tok_map[edu_id] = (offset, offset + len(text.split())-1)
 			offset += len(text.split())
