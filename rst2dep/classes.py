@@ -25,18 +25,39 @@ def rangify(token_string):
     return ",".join(ranges)
 
 
+def unrangify(range_string):
+    # Undo formatting comma and dash separated token ID indices into comma separated list with no hyphens
+    # e.g. 1-10,13-15 -> 1,2,3,4,5,6,7,8,9,10,13,14,15
+    if range_string in ["_",""]:
+        return ""
+    ranges = range_string.split(",")
+    tokens = []
+    for rng in ranges:
+        if "-" in rng:
+            start, end = rng.split("-")
+            tokens.extend([str(i) for i in range(int(start),int(end)+1)])
+        else:
+            tokens.append(rng)
+    return ",".join(sorted(tokens, key=lambda x: int(x)))
+
+
 class SIGNAL:
-    def __init__(self, sigtype, sigsubtype, tokens):
+    def __init__(self, sigtype, sigsubtype, tokens, status=""):
         self.type = sigtype
         self.subtype = sigsubtype
         self.tokens = tokens
+        self.status = status
 
     def pretty_print(self, tokens=None):
         subtype = self.subtype
         if self.subtype in ["dm","orphan"] and tokens is not None:
             sorted_tokens = sorted([int(t) for t in self.tokens.split(",")])
             subtype = " ".join(tokens[int(t)-1].lower() for t in sorted_tokens)
-        return "-".join([self.type, subtype, rangify(self.tokens)])
+        status = "_" if self.status == "" else self.status
+        tokens = rangify(self.tokens)
+        if tokens == "":
+            tokens = "_"
+        return "-".join([self.type, subtype, tokens, status])
 
     def __repr__(self):
         return self.type + "/" + self.subtype + " (" + self.tokens + ")"
@@ -302,7 +323,7 @@ def read_rst(data, rel_hash, as_text=False):
             if not relname.endswith("_r") and len(relname) > 0:
                 relname = relname + "_r"
         edu_id = segment.attributes["id"].value
-        contents =  re.sub(r' +', ' ', segment.childNodes[0].data.strip().replace("\n", " ").replace("\t", " "))
+        contents = re.sub(r' +', ' ', segment.childNodes[0].data.strip().replace("\n", " ").replace("\t", " "))
         nodes.append(
             [str(ordered_id[edu_id]), id_counter, id_counter, str(ordered_id[parent]), 0, "edu", contents, relname])
 
@@ -393,11 +414,12 @@ def read_rst(data, rel_hash, as_text=False):
                 if nid not in secedges:
                     raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
                 else:
-                    secedges[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+                    status = sig.attributes["status"].value if sig.hasAttribute("status") else ""
+                    secedges[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value,status))
                     continue
             else:
                 raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
-        elements[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+        elements[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value,sig.attributes["status"].value if sig.hasAttribute("status") else ""))
 
     for secedge in secedges:
         elements[secedge] = secedges[secedge]

@@ -45,10 +45,11 @@ Input format - .conllu:
 import io, sys, os
 from argparse import ArgumentParser
 try:
-    from classes import NODE, make_deterministic_nodes
+    from classes import NODE, make_deterministic_nodes, rangify, unrangify
 except:
-    from .classes import NODE, make_deterministic_nodes
+    from .classes import NODE, make_deterministic_nodes, rangify, unrangify
 from collections import defaultdict
+import re
 
 # Default relations to include in generated .rs3 header
 DEFAULT_RELATIONS = \
@@ -59,9 +60,49 @@ DEFAULT_RELATIONS = \
             "restatement-partial","causal-result","topic-solutionhood"},
      "multinuc":{"joint-other","adversative-contrast","same-unit","joint-sequence","joint-disjunction","restatement-repetition","joint-list"}}
 
+DEFAULT_SIGNALS = {
+    "dm": {"dm"},
+    "graphical": {"colon","dash","items_in_sequence","layout","parentheses","question_mark","quotation_marks","semicolon"},
+    "lexical": {"alternate_expression","indicative_phrase","indicative_word"},
+    "morphological": {"mood","tense"},
+    "numerical": {"same_count"},
+    "orphan": {"orphan"},
+    "reference": {"comparative_reference","demonstrative_reference","personal_reference","propositional_reference"},
+    "semantic": {"antonymy","attribution_source","lexical_chain","meronymy","negation","repetition","synonymy"},
+    "syntactic": {"infinitival_clause","interrupted_matrix_clause","modified_head","nominal_modifier","parallel_syntactic_construction","past_participial_clause","present_participial_clause","relative_clause","reported_speech","subject_auxiliary_inversion"},
+    "unsure": {"unsure"}
+}
+
+sigmap = defaultdict(set)
+
 
 def clean_xml(xml):
     xml = xml.replace(" />", "/>").replace("    ", "\t").replace("<?xml version='1.0' encoding='utf8'?>\n", "")
+    return xml
+
+
+def sig2dict(signal_string):
+    majtype, subtype, tokens = signal_string.split("-", 2)
+    if tokens.replace("-", "").replace(",", "").isdigit():  # Status field is included
+        status = "_"
+    else:  # Old format with no status field
+        tokens, status = tokens.rsplit("-", 1)
+    if tokens == "":
+        tokens = "_"
+    tokens = unrangify(tokens)
+    return {"type": majtype, "subtype": subtype, "toks": tokens, "status": status}
+
+
+def sig2xml(sig):
+    global sigmap
+    toks = sig["toks"]
+    stype = sig["type"]
+    subtype = sig["subtype"]
+    if stype in ["dm", "orphan"]:
+        subtype = stype
+    sigmap[stype].add(subtype)
+    status = ' status="' + sig["status"] + '"' if sig["status"] != "_" else ""
+    xml = '\t\t\t<signal source="' + sig["source"] + '" type="' + stype + '" subtype="' + subtype + '" tokens="' + toks + '"' + status + '/>'
     return xml
 
 
@@ -122,7 +163,9 @@ def determinstic_groups(nodes):
     return id_map
 
 
-def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
+def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=False):
+    global sigmap
+
     nodes = {}
     if default_rels:
         rels = DEFAULT_RELATIONS
@@ -132,6 +175,8 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
     lines = rsd.split("\n")
     max_id = 0
     all_tokens = []
+    secedges = []
+    sigmap = defaultdict(set)
     for line in lines:
         if "\t" in line:
             fields = line.split("\t")
@@ -145,13 +190,15 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
             relation = fields[7].replace("_m","").replace("_r","")
             signals = []
             all_tokens += fields[1].split(" ")
-            # Signals=DM-305;Signals=DM-319,320
-            if "Signals=" in fields[-1]:
-                sigs = fields[-1].split("=",maxsplit=1)[1].strip().replace("Signals=","").split(";")
+            if fields[8] != "_":  # Secedges
+                dep_target, secrel, src_height, target_height, sec_signals = fields[8].split(":")
+                sec_signals = sec_signals.split(";")
+                secedges.append({"trg": dep_target, "src": eid, "rel": secrel, "src_height": src_height, "trg_height": target_height, "signals": sec_signals})
+            if fields[-1] != "_":
+                # Values like: dm-but-70-gold;semantic-lexical_chain-72-73,85-_;graphical-layout-_-_
+                sigs = fields[-1].split(";")
                 for sig in sigs:
-                    stype, stokens = sig.split("-")
-                    stokens = stokens.split(",")
-                    signals.append({"type":stype, "toks":stokens})
+                    signals.append(sig2dict(sig))
             if relation != "ROOT":
                 if not default_rels:
                     rels[reltype].add(relation)
@@ -260,12 +307,46 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
         rel_list.append('\t\t\t<rel name="' + rel +'" type="rst"/>')
     for rel in rels["multinuc"]:
         rel_list.append('\t\t\t<rel name="' + rel +'" type="multinuc"/>')
-    header += "\n".join(sorted(rel_list)) + "\n\t\t</relations>\n\t</header>\n\t<body>\n"
+    sig_header = ""
+    if default_sigs:
+        sigmap = DEFAULT_SIGNALS
+    for stype in sorted(sigmap):
+        subtypes = ";".join(sorted(sigmap[stype]))
+        sig_header += '\t\t\t<sig type="'+stype+'" subtypes="'+subtypes+'"/>\n'
+    if len(sig_header) > 0:
+        sig_header = "\n\t\t<sigtypes>\n" + sig_header + "\t\t</sigtypes>"
+    header += "\n".join(sorted(rel_list)) + "\n\t\t</relations>"+sig_header+"\n\t</header>\n\t<body>\n"
 
     edus = [n for n in nodes.values() if n.kind == "edu"]
     groups = [n for n in nodes.values() if n.kind != "edu"]
 
     id_map = determinstic_groups(nodes)
+
+    # Add secedges
+    secedges_out = []
+    secedge_signals = defaultdict(list)
+    for secedge in secedges:
+        src = nodes[int(secedge["src"])]
+        trg = nodes[int(secedge["trg"])]
+        src_height = int(secedge["src_height"])
+        trg_height = int(secedge["trg_height"])
+        relname = secedge["rel"]
+        while src_height > 0:
+            src = nodes[src.parent]
+            src_height -= 1
+        while trg_height > 0:
+            trg = nodes[trg.parent]
+            trg_height -= 1
+        src = str(id_map[src.id]) if src.kind != "edu" else str(src.id)
+        trg = str(id_map[trg.id]) if trg.kind != "edu" else str(trg.id)
+        eid = src + "-" + trg
+        secedges_out.append('\t\t\t<secedge id="'+eid+'" source="'+src+'" target="'+trg+'" relname="'+relname+'"/>')
+        sec_sigs = secedge["signals"]
+        for sec_sig in sec_sigs:
+            secedge_signals[eid].append(sig2dict(sec_sig))
+    secedges_out.sort(key=lambda x: tuple([int(k) for k in x.split('id="')[1].split('"')[0].split("-")]))
+    secedges_out = "\n\t\t<secedges>\n" + "\n".join(secedges_out) + "\n\t\t</secedges>" if len(secedges_out) > 0 else ""
+
 
     edus_out = []
     for edu in sorted(edus, key=lambda x:x.id):
@@ -285,13 +366,13 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
 
     # Percolate signals up
     for n in sorted(list(nodes.values()),key=lambda x:int(x.id)):
-        for sig in n.signals:
+        if len(n.signals) > 0:
             relkind = n.relkind
             node = n
-            if node.id == 30:
+            if n.id == 76:
                 a=4
             # Check for span on left-most multinuc child with different relation
-            while relkind == "span" or (relkind == "multinuc" and node.dep_rel != node.relname):
+            while relkind == "span" or (relkind == "multinuc" and node.left == nodes[node.parent].left):
                 parent = nodes[node.parent]
                 parent.signals = node.signals
                 node.signals = []
@@ -301,27 +382,22 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
     signals_out = []
     for n in sorted(list(nodes.values()),key=lambda x:int(x.id)):
         for sig in n.signals:
-            toks = ",".join(sig["toks"])
-            if ":" in sig:
-                stype, subtype = sig["type"].split(":")
-            else:
-                stype = subtype = sig["type"]
-                if stype == "DM":
-                    words = []
-                    for tok in sig["toks"]:
-                        if int(tok) < len(all_tokens):
-                            words.append(all_tokens[int(tok)-1])
-                    subtype = "_".join(words) if len(words) > 0 else "DM"
+            sig["source"] = str(id_map[n.id])
+            signals_out.append(sig2xml(sig))
 
-            stype = sig["type"]
-            xml = '\t\t\t<signal source="'+id_map[n.id]+'" type="'+stype+'" subtype="'+subtype+'" tokens="'+toks+'"/>'
-            signals_out.append(xml)
+    for eid in secedge_signals:
+        for sig in secedge_signals[eid]:
+            sig["source"] = eid
+            signals_out.append(sig2xml(sig))
+
     if len(signals_out) > 0:
-        signals_out = "\n\t\t<signals>\n" + "\n".join(signals_out) + "\n\t\t</signals>\n"
+        # sort by int of first part of source, then by first token of signal anchor
+        signals_out.sort(key=lambda x: (int(x.split('source="')[1].split('"')[0].split("-")[0]),int(re.split(r'[-,]',x.split('tokens="')[1].split('"')[0])[0]) if x.split('tokens="')[1].split('"')[0]!="" else 0))
+        signals_out = "\n\t\t<signals>\n" + "\n".join(signals_out) + "\n\t\t</signals>"
     else:
         signals_out = ""
 
-    output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + signals_out + "\n\t</body>\n</rst>\n"
+    output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + secedges_out + signals_out + "\n\t</body>\n</rst>\n"
 
     # Ensure deterministic node numbering
     output = make_deterministic_nodes(output)

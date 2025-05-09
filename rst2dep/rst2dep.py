@@ -17,7 +17,32 @@ except:
 # Add hardwired genre identifiers which appear as substring in filenames here
 GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
           "_bio_":"bio","_fiction_":"fiction","_academic_":"academic","_reddit_":"reddit",
-          "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",}
+          "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",
+          "_dict_":"dict","_esports_":"esports","_proof_":"proof","_threat_":"threat","_legal_":"legal",
+          "_medical_":"medical","_syllabus_":"syllabus","_poetry_":"poetry"
+          }
+
+
+def abbreviate_signals(signal_string):
+    if signal_string == "_":
+        return "_"
+    parts = signal_string.replace("|", "-").split("-", 2)
+    if parts[0] not in ["dm", "orphan"]:
+        parts[1] = subtypes[parts[1]]
+    parts[0] = sigtypes[parts[0]]
+    return "-".join(parts)
+
+
+def add_feat(field,feat):
+    if field == "_":
+        return feat
+    else:
+        attrs = field.split("|")
+        if "=" in feat:
+            featname = feat.split("=")[0]
+            attrs = [a for a in attrs if not a.startswith(featname+"=")]
+        attrs.append(feat)
+        return "|".join(sorted(list(set(attrs))))
 
 
 def find_dep_head(nodes, source, exclude, block, initial_deprel, algorithm="li", keep_same_unit=False):
@@ -419,3 +444,45 @@ if __name__ == "__main__":
                 newname = file_ + ".rsd"
             with io.open(newname, 'w', encoding="utf8", newline="\n") as f:
                 f.write(output)
+
+
+def make_conllu(rsd, conllu):
+    """Add rsd dependency relations to conllu file in the MISC column Discourse attribute"""
+
+    rsd_spans = {}
+    rsd_lines = rsd.split("\n")
+
+    toknum = 0
+    for line in rsd_lines:
+        if "\t" in line:
+            fields = line.split("\t")
+            edu_id, content, depth, _, _, _, parent, relname, secedges, signals = fields
+            rsd_spans[toknum] = (content, relname, parent, depth, secedges, signals)
+            toknum += content.strip().count(" ") + 1
+
+    output = []
+    toknum = 0
+    for line in conllu.split("\n"):
+        if "\t" in line:
+            fields = line.split("\t")
+            if not "-" in fields[0] and not "." in fields[0]:  # Regular token, not an ellipsis token or supertok
+                if toknum in rsd_spans:
+                    rsd_data = rsd_spans[toknum]
+                    sig_data = ":" + "+".join([abbreviate_signals(sig) for sig in rsd_data[5].split(";")]) if output_signals else ""
+                    relname = convert_rel(rsd_data[1], version=relation_set)
+                    if rsd_data[2] == "0":  # ROOT
+                        disc = "Discourse=" + relname + ":" + rsd_data[0] + ":" + rsd_data[3]
+                    else:
+                        disc = "Discourse=" + relname + ":" + rsd_data[0] + "->" + rsd_data[2] + ":" + rsd_data[3] + sig_data
+                    if rsd_data[4] != "_" and output_secedges:  # Secedges found
+                        for secedge in sorted(rsd_data[4].split("|")):
+                            secparts = secedge.split(":")
+                            sig_data = ":" + "+".join(sorted([abbreviate_signals(sig) for sig in secparts[-1].split(";")])) if output_signals else ""
+                            disc += ";" + secparts[1] + ":" + rsd_data[0] + "->" + secparts[0] + ":" + secparts[2] + ":" + secparts[3] + sig_data
+                    misc = add_feat(fields[-1], disc)
+                    fields[-1] = misc
+                    line = "\t".join(fields)
+                toknum += 1
+        output.append(line)
+
+    return "\n".join(output)
