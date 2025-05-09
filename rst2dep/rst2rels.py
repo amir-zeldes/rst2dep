@@ -365,7 +365,7 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	return output
 
 
-def get_ssplit(rsd, lang_code="en"):
+def get_ssplit(rsd, lang_code="en", tokenize=False):
 
 	# Creates edu list and document string
 	edu_list = []
@@ -429,8 +429,10 @@ def rst2conllu(rst, lang_code="en"):
 	dicts = proccessed_document.to_dict()
 	for sent in dicts:
 		for token_dict in sent:
-			del token_dict["start_char"]
-			del token_dict["end_char"]
+			if "start_char" in token_dict:
+				del token_dict["start_char"]
+			if "end_char" in token_dict:
+				del token_dict["end_char"]
 	conll = CoNLL.convert_dict(dicts)
 
 	# make conll into string
@@ -469,7 +471,7 @@ def rst2conllu(rst, lang_code="en"):
 	return conll_str
 
 
-def rst2tok(rst, lang_code="en"):
+def rst2tok(rst, lang_code="en", tokenize=False):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 	rsd_from_rst = filter_string(rsd_from_rst)
@@ -512,12 +514,12 @@ def rst2tok(rst, lang_code="en"):
 	return tok_str
 
 
-def rst2rels(rst, docname="document", lang_code="en"):
+def rst2rels(rst, docname="document", lang_code="en", tokenize=False):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 	rsd_from_rst = filter_string(rsd_from_rst)
 	conll_str = rst2conllu(rst, lang_code=lang_code)
-	rels_format = make_rels(rsd_from_rst, conll_str, docname, outmode="standoff_reltype")
+	rels_format = make_rels(rsd_from_rst, conll_str, docname, outmode="standoff_reltype", rsd_not_tokenized=tokenize)
 	rels_str = "\n".join(rels_format) # rels format string
 
 	return rels_str
