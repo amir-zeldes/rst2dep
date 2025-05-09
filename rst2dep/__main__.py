@@ -1,6 +1,12 @@
-from .rst2dep import make_rsd
-from .dep2rst import rsd2rs3, conllu2rsd
-from .rst2rels import rst2conllu, rst2tok, rst2rels
+try:
+    from .rst2dep import make_rsd
+    from .dep2rst import rsd2rs3, conllu2rsd
+    from .rst2rels import rst2conllu, rst2tok, rst2rels
+except ImportError:  # Running as a script
+    from rst2dep import make_rsd
+    from dep2rst import rsd2rs3, conllu2rsd
+    from rst2rels import rst2conllu, rst2tok, rst2rels
+
 from argparse import ArgumentParser
 import sys, os, io
 
@@ -20,6 +26,7 @@ def run_conversion():
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
     parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain")
     parser.add_argument("-n","--node_ids",action="store_true",help="output constituent node IDs in rsd dependency format")
+    parser.add_argument("-t","--tokenize",action="store_true",help="tokenize words in input data (default: False - spaces will be used as token separators)")
 
     options = parser.parse_args()
 
@@ -40,11 +47,11 @@ def run_conversion():
             rst = open(file_).read()
 
             if options.output_format == "rels":
-                output = rst2rels(rst, docname=os.path.basename(file_).split(".")[0], lang_code=options.language_code)
+                output = rst2rels(rst, docname=os.path.basename(file_).split(".")[0], lang_code=options.language_code, tokenize=options.tokenize)
             elif options.output_format == "tok":
-                output = rst2tok(rst, lang_code=options.language_code)
+                output = rst2tok(rst, lang_code=options.language_code, tokenize=options.tokenize)
             elif options.output_format == "conllu":
-                output = rst2conllu(rst, lang_code=options.language_code)
+                output = rst2conllu(rst, lang_code=options.language_code, tokenize=options.tokenize)
             else:
                 output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit, output_const_nid=options.node_ids)
             if options.prnt:
