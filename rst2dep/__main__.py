@@ -33,7 +33,7 @@ def run_conversion():
         files = [inpath]
 
     if options.format in ["rs3","rs4"]:
-        sys.stderr.write("o Converting from " + options.format + " to " + options.output_format + " format\n") # rsd
+        sys.stderr.write("o Converting from " + options.format + " to " + options.output_format + " format\n")
         for file_ in files:
             sys.stderr.write("Processing " + os.path.basename(file_) + "\n")
 
@@ -52,7 +52,7 @@ def run_conversion():
             else:
                 newname = file_.replace("rs3", options.output_format).replace("rs4", options.output_format)
                 if newname == file_:
-                    newname = file_ + "." + options.output_formaß
+                    newname = file_ + "." + options.output_format
                 with io.open(newname, 'w', encoding="utf8", newline="\n") as f:
                     f.write(output)
     else:
