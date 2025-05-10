@@ -44,7 +44,7 @@ def format_range(tok_ids):
 	return ",".join(formatted)
 
 
-def format_text(arg1_toks, toks, mwts=None):
+def format_text(arg1_toks, toks, mwts=None, mwt_rewrites=None, no_space_after=None):
 	last = arg1_toks[0] - 1
 	output = []
 	for tid in sorted(arg1_toks):
@@ -53,7 +53,7 @@ def format_text(arg1_toks, toks, mwts=None):
 		output.append(toks[tid])
 		last = tid
 	output = " ".join(output)
-	if mwts is not None:  # remove space after MWT internal tokens
+	if mwts is not None and mwt_rewrites is not None and no_space_after is not None:  # remove space after MWT internal tokens
 		tok_strings = output.split()
 		output = ""
 		idx = 0
@@ -61,12 +61,17 @@ def format_text(arg1_toks, toks, mwts=None):
 			if tok == "<*>":
 				output += "<*> "
 			else:
-				output += tok
 				argtok = arg1_toks[idx]
+				if argtok in mwt_rewrites:
+					tok = mwt_rewrites[argtok]
+				output += tok
 				is_in_mwt = False
 				if argtok in mwts:
 					is_in_mwt = mwts[argtok]
-				if not is_in_mwt:
+				is_in_nsa = False
+				if argtok in no_space_after:
+					is_in_nsa = no_space_after[argtok]
+				if not is_in_mwt and not is_in_nsa:
 					output += " "
 				idx += 1
 	return output.strip()
@@ -110,6 +115,9 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	s_starts = {}
 	s_ends = {}
 	mwts = {}  # Track MWT internal tokens (excluding last)
+	mwt_rewrites = {} # Track MWT rewrites: tok_idx : rewrite text
+	mwt_lengths = {} # Track MWT lengths (leading tok_idx only)
+	no_space_after = {} # track tokens with no space after annotation
 	conllu_toks = []
 
 	for sent in sents:
@@ -123,9 +131,17 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 					if "-" in fields[0]:
 						start, end = fields[0].split("-")
 						length = int(end) - int(start)
+						mwt_lengths[toknum] = length + 1
+						mwt_rewrites[toknum] = fields[1]
 						for i in range(length):
 							mwts[toknum+i] = True
+						for i in range(1,length+1):
+							mwt_rewrites[toknum+i] = ""
 					continue
+				if toknum not in no_space_after:
+					no_space_after[toknum] = False
+				if fields[9] == "SpaceAfter=No":
+					no_space_after[toknum] = True
 				conllu_toks.append(fields[1])
 				if fields[0] == "1":
 					s_starts[snum] = toknum
@@ -141,6 +157,7 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	texts = {}
 	tok_map = {}
 	offset = 0
+	conllu_idx = 0
 	rels = defaultdict(list)
 	rel_sigtypes = defaultdict(list)
 	for line in rsd_lines:
@@ -153,14 +170,23 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 				# Get the EDU tokenization from the conllu tokens
 				edu_toks = []
 				nospace_edu = re.sub(r'\s', "", fields[1])
-				while nospace_edu != "":
-					curr_tok = conllu_toks[0]
-					if nospace_edu.startswith(curr_tok):
-						edu_toks.append(curr_tok)
-						nospace_edu = nospace_edu[len(curr_tok):]
-						conllu_toks = conllu_toks[1:]
+				mwt_buffer = 0
+				while nospace_edu != "" or mwt_buffer != 0:
+					curr_conllu_tok = conllu_toks[conllu_idx]
+					if conllu_idx in mwt_rewrites:
+						curr_text_tok = mwt_rewrites[conllu_idx]
+						if conllu_idx in mwt_lengths:
+							mwt_buffer = mwt_lengths[conllu_idx] - 1
+						elif mwt_buffer > 0:
+							mwt_buffer -= 1
 					else:
-						raise IOError("EDU error: ", fields[1], curr_tok)
+						curr_text_tok = curr_conllu_tok
+					if nospace_edu.startswith(curr_text_tok):
+						edu_toks.append(curr_conllu_tok)
+						conllu_idx += 1
+						nospace_edu = nospace_edu[len(curr_text_tok):]
+					else:
+						raise IOError("EDU error: ", nospace_edu, curr_text_tok)
 				text = " ".join(edu_toks)
 			else:
 				text = fields[1]
@@ -309,10 +335,10 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 						component_toks = list(range(tok_map[component][0], tok_map[component][1]+1))
 						arg2_toks += component_toks
 				arg1_txt = format_text(arg1_toks,toks)
-				arg1_raw_txt = format_text(arg1_toks,toks,mwts)
+				arg1_raw_txt = format_text(arg1_toks,toks,mwts,mwt_rewrites,no_space_after)
 				arg1_sent = format_sent(arg1_sid,sents)
 				arg2_txt = format_text(arg2_toks,toks)
-				arg2_raw_txt = format_text(arg2_toks,toks,mwts)
+				arg2_raw_txt = format_text(arg2_toks,toks,mwts,mwt_rewrites,no_space_after)
 				arg2_sent = format_sent(arg2_sid,sents)
 				arg1_toks = format_range(arg1_toks)
 				arg2_toks = format_range(arg2_toks)
@@ -551,6 +577,7 @@ if __name__ == "__main__":
 	parser.add_argument("-r","--rels",action="store_true",help="generate disrpt .rels format")
 	parser.add_argument("-t","--tok",action="store_true",help="generate .tok format")
 	parser.add_argument("-c","--conllu",action="store_true",help="generate .conllu format")
+	parser.add_argument("-k", "--tokenize", action="store_true",help="tokenize words in input data (default: False - spaces will be used as token separators)")
 	options = parser.parse_args()
 	inpath = options.infiles
 
@@ -566,7 +593,7 @@ if __name__ == "__main__":
 		rst = open(file_).read()
 		rels, tok, conllu = "", "", ""
 		if options.rels:
-			rels = rst2rels(rst, docname=input_docname, lang_code=options.language_code)
+			rels = rst2rels(rst, docname=input_docname, lang_code=options.language_code, tokenize=options.tokenize)
 		if options.tok:
 			tok = rst2tok(rst, lang_code=options.language_code)
 		if options.conllu:
