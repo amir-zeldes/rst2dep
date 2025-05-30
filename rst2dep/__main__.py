@@ -8,7 +8,7 @@ except ImportError:  # Running as a script
     from rst2rels import rst2conllu, rst2tok, rst2rels
 
 from argparse import ArgumentParser
-import sys, os, io
+import sys, os, io, re
 
 def run_conversion():
     parser = ArgumentParser(usage="python -m rst2dep [-h] [-l] [-c ROOT] [-p] [-s] [-a {li,hirao,chain}] [-f {rsd,conllu,rs3,rs4}] [-o {rsd,conllu,tok,rels}] [-d {ltr,rtl,dist}] [-r] infiles")
@@ -26,7 +26,8 @@ def run_conversion():
     parser.add_argument("-a","--algorithm",choices=["li","chain","hirao"],help="dependency head algorithm (default: li)",default="li")
     parser.add_argument("-s","--same_unit",action="store_true",help="retain same-unit multinucs in hirao algorithm / attach them as in li algorithm for chain")
     parser.add_argument("-n","--node_ids",action="store_true",help="output constituent node IDs in rsd dependency format")
-    parser.add_argument("-t","--tokenize",action="store_true",help="tokenize words in input data (default: False - spaces will be used as token separators)")
+    parser.add_argument("-w","--whitespace_tokenize",action="store_true",help="use whitespace tokenization in conllu (default: False - use stanza tokenizer)")
+    parser.add_argument("--outdir", action="store", default=None, help="output directory for serialized files (default: input file directory)")
 
     options = parser.parse_args()
 
@@ -45,19 +46,24 @@ def run_conversion():
             sys.stderr.write("Processing " + os.path.basename(file_) + "\n")
 
             rst = open(file_).read()
+            plain_docname = re.sub(r'[\s/\\]','', os.path.basename(file_).rsplit(".",1)[0].replace("rs3", "").replace("rs4", ""))
 
             if options.output_format == "rels":
-                output = rst2rels(rst, docname=os.path.basename(file_).split(".")[0], lang_code=options.language_code, tokenize=options.tokenize)
+                output = rst2rels(rst, docname=plain_docname, lang_code=options.language_code, whitespace_tokenize=options.whitespace_tokenize)
             elif options.output_format == "tok":
-                output = rst2tok(rst, lang_code=options.language_code, tokenize=options.tokenize)
+                output = rst2tok(rst, docname=plain_docname, lang_code=options.language_code, whitespace_tokenize=options.whitespace_tokenize)
             elif options.output_format == "conllu":
-                output = rst2conllu(rst, lang_code=options.language_code, tokenize=options.tokenize)
+                output = rst2conllu(rst, docname=plain_docname, lang_code=options.language_code, whitespace_tokenize=options.whitespace_tokenize)
             else:
                 output = make_rsd(file_, options.root, algorithm=options.algorithm, keep_same_unit=options.same_unit, output_const_nid=options.node_ids)
             if options.prnt:
                 print(output)
             else:
-                newname = file_.replace("rs3", options.output_format).replace("rs4", options.output_format)
+                if options.outdir:
+                    outdir = options.outdir
+                    newname = os.path.join(outdir, os.path.basename(file_).replace("rs3", options.output_format).replace("rs4", options.output_format))
+                else:
+                   newname = file_.replace("rs3", options.output_format).replace("rs4", options.output_format)
                 if newname == file_:
                     newname = file_ + "." + options.output_format
                 with io.open(newname, 'w', encoding="utf8", newline="\n") as f:
@@ -77,7 +83,11 @@ def run_conversion():
             if options.prnt:
                 print(output)
             else:
-                with open("output" + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
+                if options.outdir:
+                    outdir = options.outdir
+                else:
+                    outdir = os.path.dirname(file_)
+                with open(outdir + os.sep + os.path.basename(file_).replace(".rsd",".rs3").replace(".conllu",".rs3"),'w',encoding="utf8",newline="\n") as f:
                     f.write(output)
 
 

@@ -102,6 +102,11 @@ def seek_other_edu_child(nodes, source, exclude, block, initial_deprel, algorith
             left_sibling_id = [n for n in nodes if nodes[n].right == nodes[exclude].left - 1 and nodes[n].parent == nodes[exclude].parent and (nodes[n].dep_rel.endswith("_m") or nodes[nodes[n].parent].leftmost_child == n)]
             if len(left_sibling_id) > 0:
                 left_sibling_id = left_sibling_id[0]
+            else:  # We could have malformed rs3 where the next multinuc child to the left has no intervening hierarchy, meaning that child is not strictly adjacent
+                left_sibling_id = [n for n in nodes if nodes[n].right < nodes[exclude].left - 1 and nodes[n].parent == nodes[exclude].parent and (nodes[n].dep_rel.endswith("_m") or nodes[nodes[n].parent].leftmost_child == n)]
+                if len(left_sibling_id) > 0:  # Take the unit closest on the left of exclude
+                    left_sibling_id = sorted(left_sibling_id, key=lambda x: nodes[x].left)[-1]
+
         for child_id in children_to_search:
             # Found an EDU child which is not the original caller
             if nodes[child_id].kind == "edu" and child_id != exclude and (nodes[source].kind != "span" or nodes[child_id].relname == "span") and \

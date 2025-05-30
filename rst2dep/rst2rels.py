@@ -5,12 +5,14 @@ except:
 from stanza.utils.conll import CoNLL
 from collections import defaultdict
 from argparse import ArgumentParser
+from depedit import DepEdit
 import stanza
 import re
 
 stanza_tokenizer = None
 nlp = None
 stanza_tokenizer_no_ssplit = None
+d = DepEdit()
 
 rel_mapping = defaultdict(dict)
 rel_mapping["eng.rst.rstdt"] = {"attribution":"attribution","attribution-e":"attribution","attribution-n":"attribution","attribution-negative":"attribution","background":"background","background-e":"background","circumstance":"background","circumstance-e":"background","cause":"cause","cause-result":"cause","result":"cause","result-e":"cause","consequence":"cause","consequence-n-e":"cause","consequence-n":"cause","consequence-s-e":"cause","consequence-s":"cause","comparison":"comparison","comparison-e":"comparison","preference":"comparison","preference-e":"comparison","analogy":"comparison","analogy-e":"comparison","proportion":"comparison","condition":"condition","condition-e":"condition","hypothetical":"condition","contingency":"condition","otherwise":"condition","contrast":"contrast","concession":"contrast","concession-e":"contrast","antithesis":"contrast","antithesis-e":"contrast","elaboration-additional":"elaboration","elaboration-additional-e":"elaboration","elaboration-general-specific-e":"elaboration","elaboration-general-specific":"elaboration","elaboration-part-whole":"elaboration","elaboration-part-whole-e":"elaboration","elaboration-process-step":"elaboration","elaboration-process-step-e":"elaboration","elaboration-object-attribute-e":"elaboration","elaboration-object-attribute":"elaboration","elaboration-set-member":"elaboration","elaboration-set-member-e":"elaboration","example":"elaboration","example-e":"elaboration","definition":"elaboration","definition-e":"elaboration","purpose":"enablement","purpose-e":"enablement","enablement":"enablement","enablement-e":"enablement","evaluation":"evaluation","evaluation-n":"evaluation","evaluation-s-e":"evaluation","evaluation-s":"evaluation","interpretation-n":"evaluation","interpretation-s-e":"evaluation","interpretation-s":"evaluation","interpretation":"evaluation","conclusion":"evaluation","comment":"evaluation","comment-e":"evaluation","evidence":"explanation","evidence-e":"explanation","explanation-argumentative":"explanation","explanation-argumentative-e":"explanation","reason":"explanation","reason-e":"explanation","list":"joint","disjunction":"joint","manner":"manner-means","manner-e":"manner-means","means":"manner-means","means-e":"manner-means","problem-solution":"topic-comment","problem-solution-n":"topic-comment","problem-solution-s":"topic-comment","question-answer":"topic-comment","question-answer-n":"topic-comment","question-answer-s":"topic-comment","statement-response":"topic-comment","statement-response-n":"topic-comment","statement-response-s":"topic-comment","topic-comment":"topic-comment","comment-topic":"topic-comment","rhetorical-question":"topic-comment","summary":"summary","summary-n":"summary","summary-s":"summary","restatement":"summary","restatement-e":"summary","temporal-before":"temporal","temporal-before-e":"temporal","temporal-after":"temporal","temporal-after-e":"temporal","temporal-same-time":"temporal","temporal-same-time-e":"temporal","sequence":"temporal","inverted-sequence":"temporal","topic-shift":"topic-change","topic-drift":"topic-change","textualorganization":"textual-organization"}
@@ -91,7 +93,7 @@ def format_sent(arg1_sid, sents):
 
 
 def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedges=True, outmode="standoff",
-			  coarse_rels=False, dedup=True, rsd_not_tokenized=True):
+			  coarse_rels=False, dedup=True, whitespace_tokenize=False):
 	if outmode == "standoff":
 		header = ["doc", "unit1_toks", "unit2_toks", "unit1_txt", "unit2_txt", "s1_toks", "s2_toks", "unit1_sent",
 				  "unit2_sent", "dir", "orig_label", "label"]
@@ -166,7 +168,7 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 			edu_id = fields[0]
 			edu_parent = fields[6]
 			relname = fields[7].replace("_m","").replace("_r","")
-			if rsd_not_tokenized:
+			if not whitespace_tokenize:
 				# Get the EDU tokenization from the conllu tokens
 				edu_toks = []
 				nospace_edu = re.sub(r'\s', "", fields[1])
@@ -391,7 +393,7 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	return output
 
 
-def get_ssplit(rsd, lang_code="en", tokenize=False):
+def get_ssplit(rsd, lang_code="en"):
 
 	# Creates edu list and document string
 	edu_list = []
@@ -438,17 +440,38 @@ def get_ssplit(rsd, lang_code="en", tokenize=False):
 	return merged_sentences, edu_list
 
 
-def rst2conllu(rst, lang_code="en"):
+def get_mwt_rewrites(conll_sents):
+	# Generate MWT lookup
+	mwt_rewrites = {} # Track MWT rewrites: tok_idx : rewrite text
+	toknum = 0
 
-	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
+	for sent in conll_sents:
+		for fields in sent:
+			if "-" in fields[0] or "." in fields[0]:
+				if "-" in fields[0]:
+					start, end = fields[0].split("-")
+					length = int(end) - int(start)
+					mwt_rewrites[toknum] = fields[1]
+					for i in range(1,length+1):
+						mwt_rewrites[toknum+i] = ""
+				continue
+			toknum += 1
+	return mwt_rewrites
+
+
+def rst2conllu(rst, docname, lang_code="en", whitespace_tokenize=False):
+
+	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain", keep_same_unit=True)
 	rsd_from_rst = filter_string(rsd_from_rst)
 
 	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
 
 	global nlp
 	if nlp is None:
-		nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True)
+		nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
 
+	if whitespace_tokenize:
+		merged_sentences = [s.strip().split(" ") for s in merged_sentences]
 	proccessed_document = nlp(merged_sentences)
 
 	# returnable object
@@ -466,38 +489,58 @@ def rst2conllu(rst, lang_code="en"):
 	seg_begin = True
 	current_edu_index = 0
 	current_edu = ""
+
+	mwt_rewrites = get_mwt_rewrites(conll)
+
+	toknum = 0
 	for sentence in conll:
 		token_lines = []
 		for token in sentence:
-			if "-" not in token[0]:
+			if "-" not in token[0] and "." not in token[0]:
 				if seg_begin:
 					if token[9] == "_":
-						token[9] = "BeginSeg=Yes"
+						token[9] = "Seg=B-seg"
 					else:
-						# add BeginSeg=Yes alphabetically
+						# add BeginSeg=Yes/Seg=B-seg alphabetically
 						misc_segments = token[9].split("|")
-						misc_segments.append("BeginSeg=Yes")
+						misc_segments.append("Seg=B-seg")
 						misc_segments.sort()
 						token[9] = "|".join(misc_segments)
 					current_edu = re.sub(r'\s', "", edu_list[current_edu_index])
-					current_edu = current_edu[len(token[1]):]
+					if toknum in mwt_rewrites:
+						current_edu = current_edu[len(mwt_rewrites[toknum]):]
+					else:
+						current_edu = current_edu[len(token[1]):]
 					seg_begin = False
 				else:
-					current_edu = current_edu[len(token[1]):]
+					if toknum in mwt_rewrites:
+						current_edu = current_edu[len(mwt_rewrites[toknum]):]
+					else:
+						current_edu = current_edu[len(token[1]):]
+					if token[9] == "_":
+						token[9] = "Seg=O"
+					else:
+						# add BeginSeg=Yes/Seg=B-seg alphabetically
+						misc_segments = token[9].split("|")
+						misc_segments.append("Seg=O")
+						misc_segments.sort()
+						token[9] = "|".join(misc_segments)
 				if current_edu == "":
 					# if we've reached the end of the edu
 					seg_begin = True
 					current_edu_index += 1
+				toknum += 1
 			token_line = "\t".join(token)
 			token_lines.append(token_line)
 		sentence_string = "\n".join(token_lines)
 		sentence_strings.append(sentence_string)
 	conll_str = "\n\n".join(sentence_strings) # conll format string
+	conll_str = d.run_depedit(conll_str, sent_id=True, sent_text=True, docname=docname, filename=docname)
 	conll_str += "\n\n"
 	return conll_str
 
 
-def rst2tok(rst, lang_code="en", tokenize=False):
+def rst2tok(rst, docname, lang_code="en", whitespace_tokenize=False):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 	rsd_from_rst = filter_string(rsd_from_rst)
@@ -507,8 +550,10 @@ def rst2tok(rst, lang_code="en", tokenize=False):
 	global stanza_tokenizer_no_ssplit
 	if stanza_tokenizer_no_ssplit is None:
 		stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize,mwt',
-													 tokenize_no_ssplit=True)
+													 tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
 	proccessed_document = stanza_tokenizer_no_ssplit(merged_sentences)
+
+	mwt_rewrites = get_mwt_rewrites(CoNLL.convert_dict(proccessed_document.to_dict()))
 
 	# make the tok format
 	tok_format = []
@@ -525,27 +570,34 @@ def rst2tok(rst, lang_code="en", tokenize=False):
 				if seg_begin:
 					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\tBeginSeg=Yes")
 					current_edu = re.sub(r'\s', "", edu_list[current_edu_index])
-					current_edu = current_edu[len(word.text):]
+					if token_index_count - 1 in mwt_rewrites:
+						current_edu = current_edu[len(mwt_rewrites[token_index_count - 1]):]
+					else:
+						current_edu = current_edu[len(word.text):]
 					seg_begin = False
 				else:
 					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\t_")
-					current_edu = current_edu[len(word.text):]
-					if current_edu == "":
-					# if we've reached the end of the edu
-						seg_begin = True
-						current_edu_index += 1
+					if token_index_count - 1 in mwt_rewrites:
+						current_edu = current_edu[len(mwt_rewrites[token_index_count - 1]):]
+					else:
+						current_edu = current_edu[len(word.text):]
+				if current_edu == "":
+				# if we've reached the end of the edu
+					seg_begin = True
+					current_edu_index += 1
 				token_index_count += 1
 	tok_str = "\n".join(tok_format) # tok format string
 	tok_str += "\n\n"
+	tok_str = "# newdoc id = " + docname + "\n" + tok_str
 	return tok_str
 
 
-def rst2rels(rst, docname="document", lang_code="en", tokenize=False):
+def rst2rels(rst, docname="document", lang_code="en", whitespace_tokenize=False):
 
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 	rsd_from_rst = filter_string(rsd_from_rst)
-	conll_str = rst2conllu(rst, lang_code=lang_code)
-	rels_format = make_rels(rsd_from_rst, conll_str, docname, outmode="standoff_reltype", rsd_not_tokenized=tokenize)
+	conll_str = rst2conllu(rst, docname, lang_code=lang_code, whitespace_tokenize=whitespace_tokenize)
+	rels_format = make_rels(rsd_from_rst, conll_str, docname, outmode="standoff_reltype", whitespace_tokenize=whitespace_tokenize)
 	rels_str = "\n".join(rels_format) # rels format string
 
 	return rels_str
@@ -588,16 +640,16 @@ if __name__ == "__main__":
 		files = [inpath]
 
 	for file_ in files:
-		input_docname = file_.split("/")[-1].split(".")[0]
+		input_docname = file_.split("/")[-1].rsplit(".",1)[0]
 		print("Processing: " + input_docname)
 		rst = open(file_).read()
 		rels, tok, conllu = "", "", ""
 		if options.rels:
-			rels = rst2rels(rst, docname=input_docname, lang_code=options.language_code, tokenize=options.tokenize)
+			rels = rst2rels(rst, docname=input_docname, lang_code=options.language_code, whitespace_tokenize=options.whitespace_tokenize)
 		if options.tok:
-			tok = rst2tok(rst, lang_code=options.language_code)
+			tok = rst2tok(rst, docname=input_docname, lang_code=options.language_code)
 		if options.conllu:
-			conllu = rst2conllu(rst, lang_code=options.language_code)
+			conllu = rst2conllu(rst, docname=input_docname, lang_code=options.language_code)
 		
 		if options.prnt:
 			if options.rels:
