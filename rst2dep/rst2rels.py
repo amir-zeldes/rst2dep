@@ -393,7 +393,7 @@ def make_rels(rsd_str, conll_str, docname, corpus="eng.erst.gum", include_secedg
 	return output
 
 
-def get_ssplit(rsd, lang_code="en"):
+def get_ssplit(rsd, lang_code="en", whitespace_tokenize=False):
 
 	# Creates edu list and document string
 	edu_list = []
@@ -404,6 +404,8 @@ def get_ssplit(rsd, lang_code="en"):
 			fields = rsd_line.split("\t")
 			current_edu = fields[1]
 			edu_list.append(current_edu)
+			if whitespace_tokenize:
+				current_edu = re.sub(r' ([!?.;:,…])( |$)', r"\1\2", current_edu)
 			document_string += current_edu + " "
 	document_string = document_string[:-1]
 
@@ -418,17 +420,44 @@ def get_ssplit(rsd, lang_code="en"):
 
 	tokenized_document = stanza_tokenizer(document_string)
 
+	if whitespace_tokenize:  # document_string does not have same whitespace as the original rsd
+		sent_texts_no_space = [re.sub(r'\s','', s.text) for s in tokenized_document.sentences]
+		sent_break_char_indices = []  # Non whitespace characters in the original document_string at which sentences break
+		cursor = 0
+		for sent in sent_texts_no_space[:-1]:
+			sent_break_char_indices.append(cursor + len(sent))
+			cursor += len(sent)
+
+		# Recreate list of sentences with text corresponding to contents of edu_list
+		edus_text = " ".join(edu_list)
+		aligned_sentences = []
+		buffer = []
+		cursor = 0
+		for c, char in enumerate(edus_text):
+			if cursor in sent_break_char_indices and len("".join(buffer).strip())>0:
+				# Create a sentence from the buffer
+				aligned_sentences.append("".join(buffer).strip())
+				buffer = []
+			if char.strip() != "":
+				cursor += 1
+			buffer.append(char)
+		if len(buffer) > 0:
+			aligned_sentences.append("".join(buffer))
+		final_sentences = aligned_sentences
+	else:
+		final_sentences = [s.text for s in tokenized_document.sentences]
+
 	# Check that sentence splits do not split any edus
 	merged_sentences = []
 	i = 0
-	while i < len(tokenized_document.sentences):
-		sentence = tokenized_document.sentences[i].text
+	while i < len(final_sentences):
+		sentence = final_sentences[i]
 		
 		# Check if this sentence and the next one split a clause
-		if i + 1 < len(tokenized_document.sentences):
-			combined = sentence + " " + tokenized_document.sentences[i + 1].text
+		if i + 1 < len(final_sentences):
+			combined = sentence + " " + final_sentences[i + 1]
 			for edu in edu_list:
-				if (edu in combined) and (edu not in sentence) and (edu not in tokenized_document.sentences[i + 1].text):
+				if (edu in combined) and (edu not in sentence) and (edu not in final_sentences[i + 1]):
 					# Merge sentences
 					sentence = combined
 					i += 1  # Skip the next sentence
@@ -464,11 +493,15 @@ def rst2conllu(rst, docname, lang_code="en", whitespace_tokenize=False):
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain", keep_same_unit=True)
 	rsd_from_rst = filter_string(rsd_from_rst)
 
-	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
+	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code, whitespace_tokenize=whitespace_tokenize)
 
 	global nlp
 	if nlp is None:
-		nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
+		if whitespace_tokenize:
+			nlp = stanza.Pipeline(lang_code, processors='tokenize,pos,lemma,depparse', tokenize_no_ssplit=True,
+								  tokenize_pretokenized=whitespace_tokenize)
+		else:
+			nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
 
 	if whitespace_tokenize:
 		merged_sentences = [s.strip().split(" ") for s in merged_sentences]
@@ -545,12 +578,15 @@ def rst2tok(rst, docname, lang_code="en", whitespace_tokenize=False):
 	rsd_from_rst = make_rsd(rst,"", as_text=True, algorithm="chain")
 	rsd_from_rst = filter_string(rsd_from_rst)
 
-	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code)
+	merged_sentences, edu_list = get_ssplit(rsd_from_rst, lang_code=lang_code, whitespace_tokenize=whitespace_tokenize)
 
 	global stanza_tokenizer_no_ssplit
 	if stanza_tokenizer_no_ssplit is None:
 		stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize,mwt',
 													 tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
+	if whitespace_tokenize:
+		merged_sentences = [s.strip().split(" ") for s in merged_sentences]
+
 	proccessed_document = stanza_tokenizer_no_ssplit(merged_sentences)
 
 	mwt_rewrites = get_mwt_rewrites(CoNLL.convert_dict(proccessed_document.to_dict()))
@@ -568,7 +604,7 @@ def rst2tok(rst, docname, lang_code="en", whitespace_tokenize=False):
 					# skip supertokens
 					continue
 				if seg_begin:
-					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\tBeginSeg=Yes")
+					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\tSeg=B-seg")
 					current_edu = re.sub(r'\s', "", edu_list[current_edu_index])
 					if token_index_count - 1 in mwt_rewrites:
 						current_edu = current_edu[len(mwt_rewrites[token_index_count - 1]):]
@@ -576,7 +612,7 @@ def rst2tok(rst, docname, lang_code="en", whitespace_tokenize=False):
 						current_edu = current_edu[len(word.text):]
 					seg_begin = False
 				else:
-					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\t_")
+					tok_format.append(str(token_index_count) + "\t" + word.text +"\t_\t_\t_\t_\t_\t_\t_\tSeg=O")
 					if token_index_count - 1 in mwt_rewrites:
 						current_edu = current_edu[len(mwt_rewrites[token_index_count - 1]):]
 					else:
