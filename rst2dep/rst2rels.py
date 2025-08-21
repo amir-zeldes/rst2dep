@@ -1,3 +1,5 @@
+from stanza.pipeline.core import UnsupportedProcessorError
+
 try:
 	from .rst2dep import make_rsd
 except:
@@ -501,7 +503,12 @@ def rst2conllu(rst, docname, lang_code="en", whitespace_tokenize=False):
 			nlp = stanza.Pipeline(lang_code, processors='tokenize,pos,lemma,depparse', tokenize_no_ssplit=True,
 								  tokenize_pretokenized=whitespace_tokenize)
 		else:
-			nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
+			try:
+				nlp = stanza.Pipeline(lang_code, processors='tokenize,mwt,pos,lemma,depparse', tokenize_no_ssplit=True,
+									  tokenize_pretokenized=whitespace_tokenize)
+			except UnsupportedProcessorError:
+				nlp = stanza.Pipeline(lang_code, processors='tokenize,pos,lemma,depparse', tokenize_no_ssplit=True,
+									  tokenize_pretokenized=whitespace_tokenize)
 
 	if whitespace_tokenize:
 		merged_sentences = [s.strip().split(" ") for s in merged_sentences]
@@ -582,7 +589,11 @@ def rst2tok(rst, docname, lang_code="en", whitespace_tokenize=False):
 
 	global stanza_tokenizer_no_ssplit
 	if stanza_tokenizer_no_ssplit is None:
-		stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize,mwt',
+		try:
+			stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize,mwt',
+													 tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
+		except UnsupportedProcessorError:
+			stanza_tokenizer_no_ssplit = stanza.Pipeline(lang_code, processors='tokenize',
 													 tokenize_no_ssplit=True, tokenize_pretokenized=whitespace_tokenize)
 	if whitespace_tokenize:
 		merged_sentences = [s.strip().split(" ") for s in merged_sentences]
@@ -643,6 +654,8 @@ def filter_string(string):
 	string = string.replace("", "\'")
 	string = string.replace("", "\"")
 	string = string.replace("", "\"")
+	string = string.replace("", " ")
+	string = string.replace("", " ")
 	string = string.replace("&quot;", "\"")
 	string = string.replace("&apos;", "\'")
 	string = string.replace("&lt;", "<")
@@ -653,6 +666,7 @@ def filter_string(string):
 	string = string.replace("lt;", "<")
 	string = string.replace("gt;", ">")
 	string = string.replace("amp;", "&")
+	string = re.sub(r' +', " ", string)  # replace multiple spaces with a single space
 	return string
 
 
