@@ -18,6 +18,7 @@ except:
 GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
           "_bio_":"bio","_fiction_":"fiction","_academic_":"academic","_reddit_":"reddit",
           "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",
+          "_court_":"court","_essay_":"essay","_letter_":"letter","_podcast_":"podcast",
           "_dict_":"dict","_esports_":"esports","_proof_":"proof","_threat_":"threat","_legal_":"legal",
           "_medical_":"medical","_syllabus_":"syllabus","_poetry_":"poetry"
           }

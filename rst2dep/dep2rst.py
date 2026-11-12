@@ -69,7 +69,7 @@ DEFAULT_SIGNALS = {
     "orphan": {"orphan"},
     "reference": {"comparative_reference","demonstrative_reference","personal_reference","propositional_reference"},
     "semantic": {"antonymy","attribution_source","lexical_chain","meronymy","negation","repetition","synonymy"},
-    "syntactic": {"infinitival_clause","interrupted_matrix_clause","modified_head","nominal_modifier","parallel_syntactic_construction","past_participial_clause","present_participial_clause","relative_clause","reported_speech","subject_auxiliary_inversion"},
+    "syntactic": {"causal_excess","infinitival_clause","interrupted_matrix_clause","modified_head","nominal_modifier","parallel_syntactic_construction","past_participial_clause","present_participial_clause","relative_clause","reported_speech","subject_auxiliary_inversion"},
     "unsure": {"unsure"}
 }
 
@@ -417,7 +417,7 @@ if __name__ == "__main__":
 
     opts = p.parse_args()
 
-    if "*" in opts.file:
+    if "*" in opts.infiles:
         from glob import glob
         files = glob(opts.infiles)
     else:
