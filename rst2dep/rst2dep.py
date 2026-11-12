@@ -250,6 +250,7 @@ def make_rsd(rstfile, xml_dep_root="", as_text=False, docname=None, out_mode="co
             edu.tokens = conll_tokens[token_reached:token_reached+edu.token_count]
             edu.s_type = edu.tokens[0].s_type
             edu.para = edu.tokens[0].para
+            edu.speaker = edu.tokens[0].speaker
             edu.item = edu.tokens[0].item
             edu.caption = edu.tokens[0].caption
             edu.heading = edu.tokens[0].heading

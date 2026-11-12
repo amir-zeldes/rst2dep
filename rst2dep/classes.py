@@ -150,6 +150,8 @@ class NODE:
                 self.heading = "caption=caption"
             if self.para== "open_para":
                 self.para = "para=para"
+            if self.speaker != "_":
+                self.speaker = "speaker=" + self.speaker
             if self.item== "open_item":
                 self.item = "item=item"
             if self.list== "ordered":

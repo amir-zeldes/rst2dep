@@ -55,6 +55,7 @@ def get_tok_info(docname,corpus_root):
     heading = "_"
     caption = "_"
     date = "_"
+    speaker = "_"
     list = "_"
     s_type = "_"
     para = "_"
@@ -81,6 +82,10 @@ def get_tok_info(docname,corpus_root):
             date = "date"
         elif "</date" in line:
             date = "_"
+        elif '<sp ' in line:
+            speaker = re.search(r'<sp who="#([^"]+)"',line).group(1)
+        elif "</sp" in line:
+            speaker = "_"
         elif '<p>' in line:
             para = "open_para"
         elif '<item>' in line:
@@ -92,6 +97,7 @@ def get_tok_info(docname,corpus_root):
             tokens[counter].list = list
             tokens[counter].s_type = s_type
             tokens[counter].date = date
+            tokens[counter].speaker = speaker
             tokens[counter].para = para
             tokens[counter].item = item
             tokens[counter].pos = fields[1]
