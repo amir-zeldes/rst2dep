@@ -163,7 +163,7 @@ def determinstic_groups(nodes):
     return id_map
 
 
-def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=False):
+def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=False, input_rels=None):
     global sigmap
 
     nodes = {}
@@ -171,6 +171,8 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=
         rels = DEFAULT_RELATIONS
     else:
         rels = {"rst":set(),"multinuc":set()}
+    if input_rels is not None:
+        rels = input_rels
     childmap = defaultdict(set)
     lines = rsd.split("\n")
     max_id = 0
@@ -199,7 +201,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=
                 sigs = fields[-1].split(";")
                 for sig in sigs:
                     signals.append(sig2dict(sig))
-            if relation != "ROOT":
+            if head != "0" and relation.upper() != "ROOT":
                 if not default_rels:
                     rels[reltype].add(relation)
                 elif default_rels and relation not in rels[reltype]:
@@ -235,7 +237,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=
 
     # Add deterministic ordering prioritizing right or left children, if desired
     left_children = [n for n in sorted(nodes,key=lambda x: nodes[x].parent-nodes[x].left) if nodes[n].parent > nodes[n].id]
-    right_children = [n for n in sorted(nodes,key=lambda x: nodes[x].left-nodes[x].parent) if nodes[n].parent < nodes[n].id]
+    right_children = [n for n in sorted(nodes,key=lambda x: nodes[x].left-nodes[x].parent) if nodes[n].parent != 0 and nodes[n].parent < nodes[n].id]
     max_dist = 0
     if ordering != "dist":
         if ordering == "ltr":
@@ -291,7 +293,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=
     done = set()
     for nid in nodes:
         node = nodes[nid]
-        if node.relkind == "multinuc" and node.id not in done:
+        if node.relkind == "multinuc" and node.parent != 0 and node.id not in done:
             parent = nodes[node.parent]
             grandparent = nodes[parent.parent]
             node.parent = grandparent.id
@@ -351,7 +353,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=
     edus_out = []
     for edu in sorted(edus, key=lambda x:x.id):
         if edu.parent == 0:
-            seg = '\t\t<segment id="' + str(edu.id) + '"/>'
+            seg = '\t\t<segment id="' + str(edu.id) + '">' + xml_escape(edu.text) + '</segment>'
         else:
             seg = '\t\t<segment id="'+str(edu.id)+'" parent="'+str(id_map[edu.parent])+'" relname="'+edu.relname+'">'+xml_escape(edu.text)+'</segment>'
         edus_out.append(seg)
@@ -369,12 +371,10 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True, default_sigs=
         if len(n.signals) > 0:
             relkind = n.relkind
             node = n
-            if n.id == 76:
-                a=4
             # Check for span on left-most multinuc child with different relation
             while relkind == "span" or (relkind == "multinuc" and node.left == nodes[node.parent].left):
                 parent = nodes[node.parent]
-                parent.signals = node.signals
+                parent.signals.extend(node.signals)
                 node.signals = []
                 relkind = parent.relkind
                 node = parent
